@@ -1,0 +1,7 @@
+#!/bin/sh
+. /etc/rc.common
+case "$1" in
+ start) /usr/local/libexec/dwa121/dwa121-service start ;;
+ stop) /usr/local/libexec/dwa121/dwa121-service stop ;;
+ restart) /usr/local/libexec/dwa121/dwa121-service stop && /usr/local/libexec/dwa121/dwa121-service start ;;
+esac

@@ -1,0 +1,44 @@
+name: Release Panther driver
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check version and package
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF_TYPE" != tag || ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo 'A version tag vX.Y.Z is required' >&2
+            exit 1
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          sha256sum -c "release/native/$version.tgz.sha256"
+          test -f "release/notes/$version.md"
+          python3 scripts/package-driver.py --version "$version"
+          cd artifacts
+          sha256sum -c "DWA121-$version-Panther-PPC.tgz.sha256"
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" \
+            "artifacts/DWA121-$version-Panther-PPC.tgz" \
+            "artifacts/DWA121-$version-Panther-PPC.tgz.sha256" \
+            "artifacts/DWA121-$version-Panther-PPC.tgz.md5" \
+            --verify-tag --notes-file "release/notes/$version.md" \
+            --title "DWA-121 Panther $version"

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleExecutable</key><string>DWA121Diagnostic</string>
+<key>CFBundleIdentifier</key><string>local.dwa121.Diagnostic</string>
+<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+<key>CFBundlePackageType</key><string>KEXT</string>
+<key>CFBundleVersion</key><string>0.14.0</string>
+<key>OSBundleCompatibleVersion</key><string>0.14.0</string>
+<!-- Symbols for the test subclass only: intentionally no USB personalities. -->
+<key>OSBundleLibraries</key><dict>
+<key>com.apple.iokit.IOUSBFamily</key><string>1.8</string>
+<key>com.apple.kernel.iokit</key><string>6.0</string>
+<key>com.apple.kernel.libkern</key><string>6.0</string>
+<key>com.apple.kernel.mach</key><string>6.0</string>
+</dict></dict></plist>

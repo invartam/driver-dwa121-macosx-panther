@@ -1,0 +1,18 @@
+{
+  "name": "wpa_supplicant RSN core",
+  "version": "2.12",
+  "source": "https://w1.fi/releases/wpa_supplicant-2.12.tar.gz",
+  "archive_sha256": "08e23937e16d0155e55cab2b51f51fbe10d80a1aa91c4e15442645059b737ef6",
+  "license": "BSD, see vendor/wpa_supplicant-2.12/README and COPYING; individual notices retained",
+  "patches": [
+    {
+      "file": "vendor/patches/hostap-2.12-panther-endian.patch",
+      "sha256": "9536ca106fe10a746e2279a6afc9bb0e69d14bf2d6e8436c57ba86b2219289e3",
+      "purpose": "Use BYTE_ORDER/BIG_ENDIAN/LITTLE_ENDIAN on Panther instead of absent modern names and GCC architecture flag _BIG_ENDIAN=1"
+    }
+  ],
+  "compiled_scope": "RSN supplicant, PSK/CCMP-only adapter, internal SHA/AES, OS urandom and eloop; no TLS/EAP/WPS/P2P/FT/SAE/MLO configuration",
+  "sources_modified": [
+    "vendor/wpa_supplicant-2.12/src/utils/common.h"
+  ]
+}

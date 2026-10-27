@@ -1,0 +1,76 @@
+DWA121 0.15.0 - Mac OS X 10.3.9 PowerPC
+
+Version initiale fonctionnelle. Validee le 27 octobre 2026 dans Panther
+PowerPC emule, avec une vraie cle USB 2.0 et le reseau NAEBA.
+WPA2, DHCP, Internet, ping, SSH et transferts TCP dans les deux sens verifies.
+Demarrage automatique, arret precoce et reconnexion USB verifies dans la VM.
+L utilisateur confirme aussi le fonctionnement du paquet complet sur son
+PowerBook USB 1.1, y compris des telechargements FTP avec un debit correct.
+Cet essai physique est rapporte par l utilisateur sans journal de mesure.
+
+Materiel : D-Link DWA-121 revision A1, USB 2001:3308, RTL8188CU.
+Les autres revisions de DWA-121 ne sont pas prises en charge.
+
+INSTALLATION
+1. Decompresser DWA121-0.15.0-Panther-PPC.tgz sur le Mac cible.
+2. Arreter Classic (applications Mac OS 9), puis brancher la cle.
+3. Ouvrir Install.command. Fournir le mot de passe administrateur a sudo.
+4. Saisir le nom exact du reseau 2,4 GHz, son canal (1 a 11), puis sa
+   phrase de passe WPA2 (8 a 63 caracteres). Sa saisie est masquee.
+5. Ouvrir Etat.command pour consulter le resultat et l'adresse inet de
+   l'interface enN indiquee dans le journal. DHCP est automatique.
+
+Le mot de passe Wi-Fi n'est pas conserve en clair. La cle derivee,
+equivalente a un secret de connexion, est conservee dans network.conf,
+propriete de root, mode 0600, dans un dossier prive mode 0700.
+Ne pas transmettre ce fichier dans les rapports de diagnostic.
+
+UTILISATION
+Le service demarre au prochain demarrage du Mac. Il retente la connexion
+apres une interruption. Demarrer.command et Arreter.command permettent
+le controle manuel ; Arreter ne desactive pas le prochain demarrage.
+Configurer.command permet de changer le SSID, le canal ou le mot de passe.
+L'interface est presentee a Panther comme Ethernet ; le menu AirPort
+n'assure pas sa configuration. Un Ethernet cable peut rester prioritaire.
+
+En cas de changement automatique de canal de la box, relancer Configurer
+avec le nouveau canal. Il n'y a pas encore de recherche automatique ni
+de roaming. Le pilote accepte WPA2-Personal avec AES/CCMP, sans PMF exige.
+Il ne prend pas en charge WPA3, WPA-Enterprise, TKIP ni les reseaux caches.
+Il ne prend en charge que 2,4 GHz ; pas de 5 GHz, ni de debits 802.11n.
+L'emission est actuellement fixee a 1 Mbit/s (debit utile inferieur).
+Le renouvellement de cles provoque une reconnexion complete avec une
+courte interruption ; il n'est pas transparent pour les applications.
+
+DESINSTALLATION
+Ouvrir Desinstaller.command. Le service s'arrete, puis le module, les
+outils, le demarrage automatique, les journaux et la configuration sont
+supprimes. Aucun fichier n'est installe dans /System/Library/Extensions.
+Une installation existante doit etre desinstallee avant remplacement.
+
+DIAGNOSTIC
+Etat.command affiche le service, le dernier journal et les interfaces.
+Journaux : /Library/Application Support/DWA121/session.log et
+session.previous.log (accessibles avec sudo).
+Service : /usr/local/libexec/dwa121/dwa121-service start|stop|status
+
+Le voyant ou le statut "running" du service ne prouve pas la connexion.
+Il faut une ligne "Network interface: enN", un statut actif et une adresse
+IP DHCP sur cette interface. Pour tester le Wi-Fi seul, debrancher le
+cable Ethernet apres avoir ouvert une session locale sur le PowerBook,
+puis tester l'acces a la box et a une page HTTP. Panther ne peut pas
+necessairement ouvrir les sites HTTPS actuels, independamment du pilote.
+
+REPRISE
+Si le journal indique qu'un autre module DWA121 est charge, terminer
+l'essai precedent. Si le module ne se decharge pas, redemarrer le Mac.
+Si la cle n'est plus detectee, arreter le service, debrancher/rebrancher
+la cle, puis demarrer. Ne pas lancer simultanement les anciens outils
+de diagnostic et le service installe.
+
+Les licences Realtek (firmware), hostap et OpenBSD sont incluses.
+
+ANCIENNES INSTALLATIONS D'ESSAI
+Si un essai anterieur a laisse un module impossible a decharger, redemarrer
+le Mac, desinstaller l'ancien paquet, puis installer cette archive. Ne pas
+recopier les fichiers du nouveau paquet par-dessus un module charge.

@@ -1,0 +1,6 @@
+{
+  Description = "DWA121 WPA2 Wi-Fi";
+  Provides = ("DWA121");
+  Requires = ("Network");
+  OrderPreference = "Late";
+}

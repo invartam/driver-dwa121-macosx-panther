@@ -1,0 +1,52 @@
+/*-
+ * Copyright (c) 2010 Damien Bergamini <damien.bergamini@free.fr>
+ * Copyright (c) 2014 Kevin Lo <kevlo@FreeBSD.org>
+ * Copyright (c) 2015 Stefan Sperling <stsp@openbsd.org>
+ * Copyright (c) 2016 Nathanial Sloss <nathanialsloss@yahoo.com.au>
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
+Port of the RTL8188CU eFuse read/power sequence and compact ROM decoding
+from OpenBSD rtwn.c revision 1.61 (2025-08-20), for Panther.
+Register/ROM layout: r92creg.h. Firmware selection: if_urtwn.c.
+Changes: checked I/O, bounds, explicit endian access, rollback and validation.
+
+Version 0.3.0 ports the RTL8188CU USB power-on, 8051 reset and firmware
+page upload/start sequences from the same rtwn.c and if_urtwn.c references.
+The boot probe keeps host data paths disabled and quiesces the MCU afterward.
+
+Version 0.4.0 adds the board-0/TSMC/1T1R MAC, BB, AGC and RF tables from
+r92creg.h, plus RF access, IQ/LC calibration and PA-bias sequences from rtwn.c
+and if_urtwn.c. Adaptations: checked USB operations, restricted hardware scope,
+full temporary IQ snapshots/restoration, all-component signed IQ comparison,
+portable signed fixed-point arithmetic, bounded LC polling, disabled data paths
+and quiescence before releasing USB. No net80211 stack is included.
+
+Version 0.5.0 ports LLT/DMA queue setup from urtwn_dma_init/urtwn_llt_init.
+All 256 links are read back; both MAC clocks are enabled for RX, with TX DMA
+disabled and all TX queues paused. DMA aggregation uses urtwn_aggr_init's
+threshold and timeout. No OUT frame is submitted. The original
+bounded parser in rx.c uses the USB descriptor layout and aggregate alignment
+from r92creg.h/urtwn_rxeof; it counts CRC-verified beacons without retaining
+frame contents. The Panther asynchronous USB backend is original project code.
+
+Version 0.8.0 adds the board-0/TSMC/1T1R, 20 MHz TXAGC calculation and
+packing from rtwn_r92c_get_txpower/rtwn_write_txpower, CCMP CAM word layout
+from rtwn_set_key/delete_key, and the USB TX descriptor from if_urtwn.c.
+Adaptations: explicit byte encoding, readback/bounded busy polling, invalidation
+before replacement, verified erasure on failure, and power-register rollback.
+The descriptor builder is limited to management/EAPOL at CCK1, with software
+sequence numbers and explicit USB ZLP requirements. No USB OUT backend exists.
+The opt-in hardware probe uses public synthetic keys and clears all CAM entries
+before allowing passive RX; all TX queues remain paused and TXDMA is disabled.

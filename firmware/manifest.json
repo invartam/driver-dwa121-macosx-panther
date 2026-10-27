@@ -1,0 +1,17 @@
+{
+  "source": "https://github.com/openbsd/src/blob/master/sys/dev/microcode/urtwn/microcode.h",
+  "revision": "/*\t$OpenBSD: microcode.h,v 1.2 2023/04/28 01:24:14 kevlo Exp $\t*/",
+  "source_sha256": "cfb809a802f0ee9275e73a2c6eeaa7bfbb253792f8c3e98c98c7c287bd33eabe",
+  "images": {
+    "urtwn-rtl8192cT": {
+      "size": 16116,
+      "sha256": "da7c57ce4426864c7ff2e417373098046a9454f7b8108ed42210209bfa9d07bc",
+      "symbol": "rtl8192cT"
+    },
+    "urtwn-rtl8192cU": {
+      "size": 16116,
+      "sha256": "99c540f91f473829b67840395f74e9d8caeb06b9f0c430872473ff5357fa3bb1",
+      "symbol": "rtl8192cU"
+    }
+  }
+}

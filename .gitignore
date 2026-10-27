@@ -1,0 +1,16 @@
+/artifacts/
+/build/
+/research/
+/vendor/wpa_supplicant-2.12.tar.gz
+/.venv/
+__pycache__/
+*.pyc
+*.dSYM/
+.DS_Store
+*.swp
+*.swo
+*~
+network.conf
+credentials.json
+id_rsa
+id_rsa.pub

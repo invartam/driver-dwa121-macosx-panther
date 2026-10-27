@@ -1,0 +1,18 @@
+--- a/src/utils/common.h
++++ b/src/utils/common.h
+@@ -38,9 +38,15 @@
+ #ifdef __APPLE__
+ #include <sys/types.h>
+ #include <machine/endian.h>
++#ifdef _BYTE_ORDER
+ #define __BYTE_ORDER	_BYTE_ORDER
+ #define __LITTLE_ENDIAN	_LITTLE_ENDIAN
+ #define __BIG_ENDIAN	_BIG_ENDIAN
++#else /* Panther: _BIG_ENDIAN is a compiler flag (1), not byte order (4321). */
++#define __BYTE_ORDER BYTE_ORDER
++#define __LITTLE_ENDIAN LITTLE_ENDIAN
++#define __BIG_ENDIAN BIG_ENDIAN
++#endif
+ static inline unsigned short bswap_16(unsigned short v)
+ {
+ 	return ((v & 0xff) << 8) | (v >> 8);

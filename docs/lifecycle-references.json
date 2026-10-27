@@ -1,0 +1,74 @@
+[
+  {
+    "file": "research/Panther-IOService.cpp",
+    "url": "https://github.com/apple-oss-distributions/xnu/blob/xnu-517.12.7/iokit/Kernel/IOService.cpp",
+    "sha256": "9ca7c8699a0c3434ee42aef553b77e98b7bc1b028b07eb273fcf87b245694779",
+    "usage": "API/lifecycle reference only; not included in distributable"
+  },
+  {
+    "file": "research/Panther-IOUSBDevice.cpp",
+    "url": "https://github.com/apple-oss-distributions/IOUSBFamily/blob/IOUSBFamily-215.4.4/IOUSBFamily/Classes/IOUSBDevice.cpp",
+    "sha256": "e68852c82ec7ba9fad302290da5264e8512c0eea637fd9e6e6bbf1dc0c59fe76",
+    "usage": "API/lifecycle reference only; not included in distributable"
+  },
+  {
+    "file": "research/Panther-IOUSBPipe.cpp",
+    "url": "https://github.com/apple-oss-distributions/IOUSBFamily/blob/IOUSBFamily-215.4.4/IOUSBFamily/Classes/IOUSBPipe.cpp",
+    "sha256": "173a197aa702bc6f54dea89428e9be6a2ef47c84b2bd201f2cd1e42949a55234",
+    "usage": "API reference only: explicit reqCount Write, zero-length and asynchronous completion semantics; not included in distributable"
+  },
+  {
+    "file": "research/Panther-IOUSBController.cpp",
+    "url": "https://github.com/apple-oss-distributions/IOUSBFamily/blob/IOUSBFamily-215.4.4/IOUSBFamily/Classes/IOUSBController.cpp",
+    "sha256": "74742d3c9440cbedd6812d45b18aad2d99c175ada6a2f08e30d8ab71f6858002",
+    "usage": "API reference only; EHCI bulk uses descriptor length rather than requested count; not included in distributable"
+  },
+  {
+    "file": "research/Panther-IOUSBController_Pipes.cpp",
+    "url": "https://github.com/apple-oss-distributions/IOUSBFamily/blob/IOUSBFamily-215.4.4/IOUSBFamily/Classes/IOUSBController_Pipes.cpp",
+    "sha256": "8920c26564b8d6318c08b3815cc4e964f65f8c509731b047de9e7eb5ec51c576",
+    "usage": "API reference only; EHCI bulk uses descriptor length rather than requested count; not included in distributable"
+  },
+  {
+    "file": "research/Panther-AppleUSBEHCI_UIM.cpp",
+    "url": "https://github.com/apple-oss-distributions/IOUSBFamily/blob/IOUSBFamily-215.4.4/AppleUSBEHCI/Classes/AppleUSBEHCI_UIM.cpp",
+    "sha256": "f935482af3c03c21a2aa7bf0ffd3a5cbd22401bc3cb0835dbf99fad34403bd77",
+    "usage": "API reference only; EHCI bulk uses descriptor length rather than requested count; not included in distributable"
+  },
+  {
+    "file": "research/Panther-IOUSBInterface.cpp",
+    "url": "https://github.com/apple-oss-distributions/IOUSBFamily/blob/IOUSBFamily-215.4.4/IOUSBFamily/Classes/IOUSBInterface.cpp",
+    "sha256": "ee75c888479c6d3c007684394aeeefedd7bb4bae41b9fb70e8dd44d828c24f34",
+    "usage": "Reference only: handleOpen distinguishes competing owner from CreatePipes failure; not included in distributable"
+  },
+  {
+    "file": "research/Panther-IONetworkController.cpp",
+    "url": "https://github.com/apple-oss-distributions/IONetworkingFamily/blob/IONetworkingFamily-15.3/IONetworkController.cpp",
+    "sha256": "1c2ba1f9f70156445aa6c4262e153690539892d340e2485902d5c9b97733f625",
+    "usage": "Reference only: native Ethernet interface lifecycle and activation; not included in distributable"
+  },
+  {
+    "file": "research/Panther-IOEthernetController.cpp",
+    "url": "https://github.com/apple-oss-distributions/IONetworkingFamily/blob/IONetworkingFamily-15.3/IOEthernetController.cpp",
+    "sha256": "a2383fb5a0ce292d0afc80ef495b83244963ebe9e8a3b6054ea9ec33f1262a12",
+    "usage": "Reference only: native Ethernet interface lifecycle and activation; not included in distributable"
+  },
+  {
+    "file": "research/Panther-IONetworkInterface.cpp",
+    "url": "https://github.com/apple-oss-distributions/IONetworkingFamily/blob/IONetworkingFamily-15.3/IONetworkInterface.cpp",
+    "sha256": "5ee13bcbe33bcf7d005e1d2f33c241f00e9f4bf6fd5bb6abb83ebac7e49bcd29",
+    "usage": "Reference only: native Ethernet interface lifecycle and activation; not included in distributable"
+  },
+  {
+    "file": "research/Panther-IOEthernetInterface.cpp",
+    "url": "https://github.com/apple-oss-distributions/IONetworkingFamily/blob/IONetworkingFamily-15.3/IOEthernetInterface.cpp",
+    "sha256": "a3849974cffcd2788e39606bb990384d64589aad1f73158c40dda67e3bc3d657",
+    "usage": "Reference only: native Ethernet interface lifecycle and activation; not included in distributable"
+  },
+  {
+    "file": "research/Panther-if.c",
+    "url": "https://github.com/apple-oss-distributions/xnu/blob/xnu-517.12.7/bsd/net/if.c",
+    "sha256": "400316c83eae6dea6f122a027b68893f6a0afe4b2dac6463dee0aaf919e455b4",
+    "usage": "Reference only: ifioctl discards SIOCSIFFLAGS driver error on final return(0); not included in distributable"
+  }
+]

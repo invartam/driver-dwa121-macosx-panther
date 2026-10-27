@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleExecutable</key>
+	<string>DWA121Diagnostic</string>
+	<key>CFBundleIdentifier</key>
+	<string>local.dwa121.Diagnostic</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>DWA121 USB Diagnostic</string>
+	<key>CFBundlePackageType</key>
+	<string>KEXT</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.15.0</string>
+	<key>CFBundleVersion</key>
+	<string>0.15.0</string>
+	<key>IOKitPersonalities</key>
+	<dict>
+		<key>DWA121 Network</key><dict><key>CFBundleIdentifier</key><string>local.dwa121.Diagnostic</string><key>IOClass</key><string>DWA121NetworkInterface</string><key>IOProviderClass</key><string>DWA121Diagnostic</string><key>IOPropertyMatch</key><dict><key>NetworkSessionEnabled</key><true/></dict></dict>
+		<key>DWA-121 A1 Diagnostic</key>
+		<dict>
+			<key>CFBundleIdentifier</key>
+			<string>local.dwa121.Diagnostic</string>
+			<key>PersistentRX</key>
+            <true/>
+            <key>PassiveRXReadLimit</key>
+            <integer>32</integer>
+            <key>PassiveRXChannel</key>
+            <integer>11</integer>
+            <key>IOClass</key>
+			<string>DWA121Diagnostic</string>
+			<key>IOProviderClass</key>
+			<string>IOUSBInterface</string>
+			<key>bConfigurationValue</key>
+			<integer>1</integer>
+			<key>bInterfaceNumber</key>
+			<integer>0</integer>
+			<key>idProduct</key>
+			<integer>13064</integer>
+			<key>idVendor</key>
+			<integer>8193</integer>
+		</dict>
+	</dict>
+	<key>OSBundleLibraries</key>
+	<dict>
+		<key>com.apple.iokit.IONetworkingFamily</key><string>1.4.0</string>
+<key>com.apple.kernel.bsd</key><string>6.0</string>
+		<key>com.apple.iokit.IOUSBFamily</key>
+		<string>1.8</string>
+		<key>com.apple.kernel.iokit</key>
+		<string>6.0</string>
+		<key>com.apple.kernel.libkern</key>
+		<string>6.0</string>
+		<key>com.apple.kernel.mach</key>
+		<string>6.0</string>
+	</dict>
+</dict>
+</plist>

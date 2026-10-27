@@ -1,0 +1,20 @@
+[
+  {
+    "file": "rtwn.c",
+    "url": "https://github.com/openbsd/src/blob/master/sys/dev/ic/rtwn.c",
+    "revision": "/*\t$OpenBSD: rtwn.c,v 1.61 2025/08/20 14:24:05 kevlo Exp $\t*/",
+    "sha256": "ad9ad229a8217d51167802640e11c5bc56fb40ded9229006141239bd5fe9b5ae"
+  },
+  {
+    "file": "if_urtwn.c",
+    "url": "https://github.com/openbsd/src/blob/master/sys/dev/usb/if_urtwn.c",
+    "revision": "/*\t$OpenBSD: if_urtwn.c,v 1.114 2025/06/18 13:48:23 jcs Exp $\t*/",
+    "sha256": "99a378ba8f7783c7d58f8214a9a27994df64116544a15fe5da8e0d811fb9c8f4"
+  },
+  {
+    "file": "r92creg.h",
+    "url": "https://github.com/openbsd/src/blob/master/sys/dev/ic/r92creg.h",
+    "revision": "/*\t$OpenBSD: r92creg.h,v 1.31 2024/09/01 03:14:48 jsg Exp $\t*/",
+    "sha256": "5021270f869a0bbef91af1b805fc2a0e50dcbbd051f69b050fb73bfb8536a180"
+  }
+]
