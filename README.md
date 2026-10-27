@@ -4,7 +4,7 @@ Pilote Wi-Fi expérimental **0.15.0** pour Mac OS X 10.3.9 PowerPC, DWA-121 **r�
 
 ## Télécharger et installer
 
-Télécharger le fichier `DWA121-0.15.0-Panther-PPC.tgz` de la release `v0.15.0` dans l'onglet *Releases* du dépôt, vérifier son fichier `.sha256`, extraire l'archive sur le Mac cible et ouvrir `Install.command`. Le programme demande le SSID, le canal et la phrase de passe ; Xcode n'est pas requis sur la machine cible. Voir la [procédure complète](docs/installation-driver.txt) pour l'installation, le démarrage, le diagnostic et la désinstallation.
+Télécharger le fichier `DWA121-0.15.0-Panther-PPC.tgz` de la [release v0.15.0](https://github.com/invartam/driver-dwa121-macosx-panther/releases/tag/v0.15.0), vérifier son fichier `.sha256`, extraire l'archive sur le Mac cible et ouvrir `Install.command`. Le programme demande le SSID, le canal et la phrase de passe ; Xcode n'est pas requis sur la machine cible. Voir la [procédure complète](docs/installation-driver.txt) pour l'installation, le démarrage, le diagnostic et la désinstallation.
 
 La clé dérivée est conservée dans `/Library/Application Support/DWA121/network.conf` sous root avec les permissions 0600. Ce fichier est un secret : ne pas le joindre aux rapports de diagnostic. Le paquet ne contient aucune configuration Wi-Fi personnelle.
 
