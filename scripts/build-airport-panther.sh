@@ -16,3 +16,4 @@ gcc -arch ppc -mcpu=750 -Wall -Werror -O2 src/tools/dwa121-airport.c -F/System/L
 gcc -arch ppc -mcpu=750 -Wall -Werror -O2 src/tools/dwa121-airport-service.c -framework SystemConfiguration -framework IOKit -framework CoreFoundation -o "$out/dwa121-airport-service"
 gcc -arch ppc -mcpu=750 -Wall -Werror -O2 tests/airport_preferences_test.c -framework CoreFoundation -o "$out/airport-preferences-test"
 gcc -arch ppc -mcpu=750 -Wall -Werror -O2 src/tools/dwa121-airport-monitor.c -framework SystemConfiguration -framework IOKit -framework CoreFoundation -o "$out/dwa121-airport-monitor"
+gcc -arch ppc -mcpu=750 -Wall -Werror -O2 tests/airport_service_test.c -framework SystemConfiguration -framework CoreFoundation -o "$out/airport-service-test"

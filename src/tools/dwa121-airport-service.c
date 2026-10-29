@@ -90,6 +90,11 @@ int main(int argc,char **argv)
         CFDictionarySetValue(interface,CFSTR("Type"),CFSTR("Ethernet"));
         CFDictionarySetValue(interface,CFSTR("DeviceName"),name);
         CFDictionarySetValue(service,CFSTR("Interface"),interface);
+        /* configd omits an empty entity. ClientController counts published
+         * Setup:/Network/Service/<service>/AirPort keys and otherwise forces Off.
+         * Ownership metadata keeps this real service entity nonempty without
+         * inventing PowerEnabled, association, or a preferred network. */
+        CFDictionarySetValue(airport,OWNER,OWNER_VALUE);
         CFDictionarySetValue(service,CFSTR("AirPort"),airport);
         CFDictionarySetValue(service,CFSTR("UserDefinedName"),CFSTR("DWA-121 AirPort P0.2"));
         CFDictionarySetValue(service,OWNER,OWNER_VALUE);
