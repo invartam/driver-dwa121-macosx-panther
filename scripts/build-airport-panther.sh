@@ -13,3 +13,6 @@ gcc $flags -c src/airport/module.c -o "$out/module.o"
 ld -arch ppc -r -o "$out/DWA121AirPortP02.kext/Contents/MacOS/DWA121AirPortP02" "$out/airport.o" "$out/module.o" -lkmodc++ -lcc_kext
 cp src/airport/Info.plist "$out/DWA121AirPortP02.kext/Contents/Info.plist"
 gcc -arch ppc -mcpu=750 -Wall -Werror -O2 src/tools/dwa121-airport.c -F/System/Library/PrivateFrameworks -framework Apple80211 -framework IOKit -framework CoreFoundation -o "$out/dwa121-airport"
+gcc -arch ppc -mcpu=750 -Wall -Werror -O2 src/tools/dwa121-airport-service.c -framework SystemConfiguration -framework IOKit -framework CoreFoundation -o "$out/dwa121-airport-service"
+gcc -arch ppc -mcpu=750 -Wall -Werror -O2 tests/airport_preferences_test.c -framework CoreFoundation -o "$out/airport-preferences-test"
+gcc -arch ppc -mcpu=750 -Wall -Werror -O2 src/tools/dwa121-airport-monitor.c -framework SystemConfiguration -framework IOKit -framework CoreFoundation -o "$out/dwa121-airport-monitor"

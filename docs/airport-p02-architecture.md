@@ -1,7 +1,7 @@
 # P0.2 — architecture et preuves Panther
 
 Branche `v1/airport-p02`, référence conservée : `v0.15.0` (d0baecb).
-Étude commencée le 27 octobre 2026, poursuivie le 28. Aucun fichier Apple
+Étude commencée le 27 octobre 2026, poursuivie les 28 et 29. Aucun fichier Apple
 n'est modifié ou distribué. Les extractions locales restent dans `artifacts/`.
 
 ## Audit préalable du pilote
@@ -30,7 +30,7 @@ CRC/ICV/FCS, NetworkSessionActive et WPA2DataPortAuthorized sont publiés.
 Aucun RSSI calibré n'a été trouvé dans le parseur actuel : ne pas inventer de
 niveau de signal. Les clés ne sont pas publiées.
 Dépendances noyau : IOUSBFamily, IONetworkingFamily, kernel bsd/iokit/libkern/mach.
-Le compagnon envisagé n'ajoute qu'IOKit/libkern ; aucune API IO80211 moderne.
+Le compagnon ajoute seulement kernel.iokit/libkern/bsd ; aucune API IO80211 moderne.
 
 ## Observations locales vérifiées avant implémentation
 
@@ -55,7 +55,7 @@ codées en dur.
 | Transport | `_airPortExec` 0x91f23184 : préfixe commande d'un octet, méthode 0 IOConnectMethodStructureIStructureO, données ensuite ; vérifié |
 | Lecture radio | WirelessGetPower 0x91f2206c et WirelessGetEnabled 0x91f21ba0 : commande 13, aucun payload ni sortie ; bits 0 et 0..1 du retour IOReturn ; vérifié |
 | Écriture radio | WirelessSetEnabled : commande 12 et entier 32 bits ; non implémentée, politique et transitions à analyser |
-| Informations | WirelessGetInfo2 : commande 18, sortie 56 octets puis conversions ; structure complète non établie, non implémentée |
+| Informations | WirelessGetInfo2 : commande 18, sortie 56 octets puis conversions ; sous-ensemble vérifié et implémenté : MAC, mode infrastructure, état radio séparé ; association indisponible |
 | Pilote Apple | AirPortUserClient::userPostCommand reçoit commande et payload, transmet à AirPortDriver::postCommand ; signature et extraction de l'octet vérifiées |
 | SystemConfiguration | SCSchemaDefinitions.h contient Hardware, Type, DeviceName, PowerEnabled (CFNumber), PreferredNetwork, JoinMode et ses valeurs ; AirPortServiceIDCopy filtre Hardware=AirPort dans les entités Interface du Dynamic Store |
 
@@ -76,11 +76,12 @@ que le framework distingue ensuite. Le prototype garde un nom propre.
 | Réutilisation/WPA2 | Moteur intact | Moteur intact, client WPA exclusif préservé |
 | P0.3/P0.4 | Insuffisant seul | Base possible, structures et événements encore à établir |
 
-Choix : B, module séparé attaché à DWA121Diagnostic avec catégorie propre,
-lecture seule de RadioRunning via copyProperty. A seule ne peut satisfaire
-la découverte de classe observée. Ne pas modifier les préférences réseau pour
-masquer ce manque. La lecture native sera d'abord exercée par un petit outil
-lié au framework original ; cela ne vaut pas preuve d'une action du menu.
+Choix : B pour le contrôle, complété par A pour la présentation du service.
+Le compagnon est attaché au contrôleur DWA121NetworkInterface, dont le parent
+est DWA121Diagnostic. Il lit RadioRunning et MACAddress sur ce parent sans
+ouvrir le client exclusif du supplicant. Le chemin Ethernet reste identique.
+Une simple déclaration SystemConfiguration n'a pas suffi lors du premier
+essai : le contrôle natif et la découverte des ports doivent aussi fonctionner.
 
 WPA/WPA2 natifs : présence de WirelessSetWPAKey/ WirelessCreatePSK vérifiée,
 mais ni WPA2 natif ni capacités UI tierces démontrés. Conserver le supplicant
@@ -88,64 +89,107 @@ existant. P0.3 exige scan multicanal, structures de résultats et notifications 
 P0.4 exige arbitrage avec le propriétaire WPA, authentification/clé et cycle de
 vie radio complet. Aucun indicateur de capacité non implémentée ne sera annoncé.
 
-## Résultats du prototype et limites établies le 28 octobre
+## Découverte native et configuration vérifiées
 
-Le module séparé `src/airport/` est compilé avec le SDK réel, PPC 750 sans
-AltiVec. Il conserve une référence au fournisseur pendant la vie des clients,
-refuse les opérations sur un service inactif et ne prend pas possession du
-client WPA. Seule la commande 13 est implémentée. Une dépendance kernel.bsd
-est ajoutée pour tracer `current_proc()->p_pid/p_comm`, dont les déclarations
-ont été vérifiées dans sys/proc.h et sys/vm.h du SDK Panther.
+Deux mécanismes distincts ont été établis dans les binaires Panther locaux :
 
-La table IOExternalMethod doit utiliser `0xffffffff` comme taille variable de
-sortie même lorsque la réponse attendue a zéro octet. Avec count1=0, le noyau
-choisit une autre signature d'appel. La table d'AirPortUserClient::start
-(0x6448–0x6474) confirme les deux sentinelles et le flag 3. Le prototype
-vérifie ensuite lui-même les tailles. Premier essai erroné conservé dans
-`load-native.log` ; il n'est pas compté comme validation. De plus,
-WirelessGetPower/GetEnabled peuvent masquer une erreur RPC : la sonde compare
-maintenant le retour brut et les valeurs natives à RadioRunning.
+- Apple80211 utilise le **nom de métaclasse C++** du service (préfixe AirPort).
+  Le compagnon s'appelle réellement AirPortDWA121 ; son client s'appelle
+  DWA121AirPortClient pour éviter une découverte parasite.
+- NetworkConfig.framework, `-[PortScanner rescanPorts]` à 0x93a13d2c, lit
+  la **propriété IOClass du contrôleur réseau** et teste `hasPrefix:@"AirPort"`.
+  Le compagnon publie temporairement IOClass=AirPortDWA121 sur ce contrôleur,
+  puis restaure sa valeur initiale à l'arrêt. Sa métaclasse reste
+  DWA121NetworkInterface, dérivée de IOEthernetController ; aucune méthode
+  TX/RX, classe Apple ou fonctionnalité matérielle n'est remplacée.
 
-Échanges réussis avec le framework original : radio arrêtée (retour brut 0,
-power=enabled=0), puis radio active (retour brut 3, power=enabled=1).
-Les traces distinguent l'outil `dwa121-airport` du vrai `SystemUIServer`.
-Après relance du menu, SystemUIServer PID 1281 a envoyé deux commandes 18,
-entrée 1 octet, sortie 56 octets. Elles atteignent le compagnon mais ne sont
-pas implémentées. La version finale renvoie Unsupported pour cette opération.
+`dwa121-airport-service add` crée un service SCPreferences identifié et marqué
+DWA121-P02 : Interface={Hardware=AirPort, Type=Ethernet, DeviceName=enN},
+entité AirPort vide, nom « DWA-121 AirPort P0.2 ». Le nom BSD est découvert
+via la filiation réelle. Le service est lié au CurrentSet et ajouté **en fin**
+de ServiceOrder ; ce dernier point est nécessaire à sa visibilité dans
+Internet Connect. Les configurations IP existantes et leur priorité relative
+restent intactes. `remove` exige la marque propriétaire et retire uniquement
+ce service, son lien et son entrée d'ordre, sous verrou SCPreferences.
+PowerEnabled, PreferredNetwork et JoinMode existent dans le schéma Panther,
+mais ne constituent pas des commandes matérielles ; P0.2 ne les utilise pas
+pour prétendre associer le réseau ou activer une radio.
 
-Essai A+B : ajout temporaire de deux clés Dynamic Store
-`Setup:/Network/Service/DWA121-P02/{Interface,AirPort}` avec Hardware=AirPort,
-Type=Ethernet, DeviceName=en2 et PowerEnabled=0. Aucune préférence persistante
-n'a été écrite. Internet Connect est resté sans onglet AirPort. Le menu affiche
-AirPort: Off ; cela ne prouve pas son bon fonctionnement, notamment lorsque
-la radio réelle est active. Les deux clés ont été supprimées après l'essai.
-La relance de SystemUIServer est un facteur confondant : cet essai ne démontre
-pas que les clés temporaires sont nécessaires aux commandes 18 observées.
-Les Préférences Réseau détectent encore « Ethernet Adaptor (en2) ».
+Apple80211Monitor ne recherche que les classes exactes AirPortDriver et
+AirPortPCI. Le relais séparé `dwa121-airport-monitor --watch` est donc nécessaire
+pour publier l'état du compagnon. Son `updateSC` original utilise des
+CFNumberShort « Power Status », « Card Mode », « Link Status » dans
+State:/Network/Interface/enN/AirPort. Le relais reproduit ce format avec
+radio réelle, mode infrastructure 1 et association indisponible 0.
+La clé est temporaire, liée à la session SCDynamicStore ; une clé préexistante
+est refusée. Aucun service de démarrage n'est installé.
 
-Blocage précis : compléter la structure WirelessStatus de 56 octets et les
-conventions d'état, puis les événements/configuration attendus par le menu.
-`AirPortDriver::getWirelessStatus` (0x2698) confirme des champs (adresse à
-+0x28, données BSSID à +0x2e, chaîne à +6, états à +2/+4/+0x34), mais les
-enums et leur correspondance avec la station RTL ne sont pas suffisamment
-établis. Ils ne sont donc pas simulés. Aucun RSSI, association, SSID courant
-ou capacité WPA2 native fictifs ne sont renvoyés.
+Les notifications distribuées ont été vérifiées dans `_notifyClients`
+(0x34fc) : nom AirPort_Notification, objet AirPort Monitor, option 2,
+dictionnaire de chaînes AirPortDriverLoaded=1/0 et Power_On=1. Le relais
+les émet aux transitions correspondantes. Il refuse la coexistence d'une
+carte Apple afin de ne pas ambiguïser ces notifications globales historiques.
+Cela ne suffit pas à achever la logique d'affichage du menu, voir limites.
 
-**P0.2 reste partiellement réalisé, pas validé au sens des critères complets.**
-D1 : service de contrôle reconnu par le framework, interface réseau toujours
-Ethernet. D2 : menu visible mais incomplet. D3 : demande réelle du menu tracée
-et refus explicite ; lecture complète via outil lié au framework original.
-D4 : lecture de l'état du moteur existant, sans duplication matérielle.
-Les phases P0.3/P0.4 sont plausibles pour le transport, encore non démontrées
-pour les structures, notifications, sécurité et orchestration du supplicant.
+## Protocole et durée de vie
 
-Le bundle final s'appelle `local.airportp02.DWA121` : son nom initial
-`local.dwa121.AirPortP02` déclenchait à tort le refus de concurrence USB du
-superviseur lors d'une reprise. Aucun fichier de supervision v0.15.0 n'a été
-modifié. Cette correction et l'incident EHCI sont détaillés dans les tests.
+IOServiceOpen type 12, méthode 0 structure/structure, commande sur un octet :
 
-Contre-épreuve finale sans clés Dynamic Store : SystemUIServer PID 1630 envoie
-bien deux commandes 18 au compagnon (reconnect-final.log). Les clés de l'essai A
-ne sont donc pas nécessaires à ce transport. La reprise recrée le fournisseur,
-mais la connexion s'arrête avant le contrôle réseau suivant : stabilité de
-reconnexion non validée, en plus du blocage d'intégration UI.
+| Commande | Contrat implémenté | Source du résultat |
+| --- | --- | --- |
+| 13 | entrée 1, sortie 0 ; IOReturn 0 ou 3 | RadioRunning réel, bits attendus par WirelessGetPower/GetEnabled |
+| 18 | entrée 1, sortie exactement 56 | MAC réelle à +40, mode infrastructure BE16 à +4 ; autres champs indisponibles initialisés à zéro |
+| Autres | Unsupported | Aucune écriture ni capacité annoncée |
+
+`AirPortDriver::getWirelessStatus` (0x2698) initialise le premier mot à zéro,
+utilise un port status nul lorsque l'état matériel est indisponible, place
+MAC à +40, SSID à +6 et BSSID à +46. Le mode vaut 1 lorsque CREATE_IBSS
+(HCF RID 0xfc81) est nul, 4 pour IBSS et 2 pour la station logicielle.
+Le moteur RTL existant est uniquement station infrastructure. WirelessGetInfo2
+convertit ces données vers un buffer de 64 octets : statut +8, mode +10,
+radio +14 via commande 13 séparée, MAC +58. P0.2 ne remplit ni SSID/BSSID,
+ni RSSI, ni association ; le zéro signifie information indisponible dans ce
+contrat minimal, pas déconnexion démontrée du moteur WPA2.
+
+IOExternalMethod utilise flags=3, count0=count1=0xffffffff ; les tailles sont
+vérifiées dans le handler. count1=0 ferait sélectionner une autre signature
+par le noyau. La table originale AirPortUserClient::start (0x6448–0x6474)
+confirme ces sentinelles. WirelessGetPower/GetEnabled masquent certains échecs
+RPC : l'outil compare donc aussi le retour brut, les propriétés réelles,
+la MAC, les conversions et les bornes des deux structures.
+
+Un verrou protège l'accès aux fournisseurs. `stop` restaure IOClass et libère
+les références au contrôleur et au pilote USB avant la disparition des anciens
+clients ; garder ces références jusqu'à `free` empêchait le superviseur de
+recharger le kext. Le test avec port client conservé 10 secondes démontre
+maintenant le déchargement USB et la révocation du port (MACH_SEND_INVALID_DEST).
+Les traces p_comm/p_pid proviennent de current_proc, avec kernel.bsd et les
+headers réels Panther. Elles distinguent les applications Apple du test.
+
+## Résultat P0.2 et limites
+
+Le prototype 0.2.0 démontre la reconnaissance native dans les Préférences
+Réseau et Internet Connect, ainsi qu'un échange complet en lecture seule avec
+le framework Apple original. SystemUIServer PID 3722 émet les commandes 18
+et 13 ; le pilote répond avec succès et RadioRunning=1. La preuve ne repose
+donc pas sur une icône ou un simple renommage de service.
+
+D1 est démontré dans la VM. D2 reste incomplet : le menu reçoit les réponses,
+mais affiche encore « AirPort: Off » lorsque la radio est active. Les
+Préférences Réseau affichent correctement AirPort activé, non connecté selon
+le statut natif incomplet. D3/D4 sont démontrés pour la lecture radio/MAC,
+pas pour l'activation, le scan ou l'association. **P0.2 est livré comme
+prototype de reconnaissance et de contrôle natif, avec cette réserve D2 ;
+il ne constitue pas une intégration complète du menu.**
+
+La reprise WPA2, DHCP et les tests courts de trafic utilisent exclusivement
+le moteur v0.15.0. Les incidents EHCI et l'endurance restent à examiner ;
+aucune validation USB1.1 physique nouvelle n'est revendiquée. Voir la procédure
+de tests pour les résultats finaux et le retour arrière.
+
+P0.3 est faisable au niveau transport, mais demande d'établir les structures
+de scan, les notifications et la machine d'état du menu, puis de traduire
+l'association réelle. P0.4 doit arbitrer les commandes natives avec le
+supplicant exclusif, protéger les écritures et les clés, et caractériser
+les capacités WPA/WPA2 de cette installation Panther. Leur fonctionnement
+natif n'est pas encore démontré. Aucun binaire Apple n'est distribué.
