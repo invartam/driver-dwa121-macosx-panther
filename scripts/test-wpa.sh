@@ -18,3 +18,11 @@ $compiler $flags ${WPA_EXTRA_CFLAGS:-} $crypto_flags tests/wpa2_test.c "$out/lib
 "$out/wpa2-test"
 $compiler $flags ${WPA_EXTRA_CFLAGS:-} $crypto_flags tests/data_test.c "$out/libdwa-wpa2.a" -lcrypto -o "$out/data-test"
 "$out/data-test"
+# Exercise the real Mach implementation at synthetic long-uptime boundaries.
+if [ "$(uname -s)" = Darwin ]; then
+    $compiler $flags ${WPA_EXTRA_CFLAGS:-} -DCONFIG_NO_STDOUT_DEBUG -DCONFIG_NO_WPA_MSG \
+        -Dmach_absolute_time=dwa_test_ticks -Dmach_timebase_info=dwa_test_timebase \
+        -c "$up/utils/os_unix.c" -o "$out/mach-clock-test-os.o"
+    $compiler $flags ${WPA_EXTRA_CFLAGS:-} tests/mach_clock_test.c "$out/mach-clock-test-os.o" -o "$out/mach-clock-test"
+    "$out/mach-clock-test"
+fi

@@ -143,7 +143,11 @@ int os_get_reltime(struct os_reltime *t)
 	}
 
 	abstime = mach_absolute_time();
-	nano = (abstime * info.numer) / info.denom;
+	/* Panther PPC can return the unreduced 1e9/25e6 timebase. Multiplying
+	 * first wraps about every 738 seconds and can strand eloop in select.
+	 * Keep the remainder to preserve precision without that intermediate. */
+	nano = (abstime / info.denom) * info.numer +
+		((abstime % info.denom) * info.numer) / info.denom;
 
 	t->sec = nano / NSEC_PER_SEC;
 	t->usec = (nano - (((uint64_t) t->sec) * NSEC_PER_SEC)) / NSEC_PER_USEC;
