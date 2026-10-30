@@ -69,6 +69,26 @@ int main(void)
         ie[1]=(rtl_u8)(i-2);n=rtl_rsn_parse(ie,i,&r)==0;CHECK(n==(i==40));
     }
     ie[1]=42;ie[22]=255;ie[23]=255;CHECK(rtl_rsn_parse(ie,44,&r)!=0&&!r.psk);
+    /* WPA OUI is distinct from RSN, and Privacy alone is not WPA/WPA2. */
+    {
+        const rtl_u8 wpa[]={221,22,0,0x50,0xf2,1,1,0,0,0x50,0xf2,2,1,0,0,0x50,0xf2,2,1,0,0,0x50,0xf2,2};
+        CHECK(rtl_wpa_status(wpa,sizeof(wpa))==RTL_RSN_VALID);
+        for(i=0;i<sizeof(wpa);++i)CHECK(rtl_wpa_status(wpa,i)==RTL_RSN_MALFORMED);
+        memcpy(ie,wpa,sizeof(wpa));ie[12]=255;
+        CHECK(rtl_wpa_status(ie,sizeof(wpa))==RTL_RSN_MALFORMED);
+        fresh(&t);memcpy(f,base,sizeof(base));
+        CHECK(rtl_bss_observe_at(&t,f,sizeof(base),11,1234)==0);
+        CHECK(t.entries[0].last_seen_ms==1234&&!strcmp(rtl_bss_security(&t.entries[0]),"privacy-unspecified"));
+        f[34]=1;CHECK(rtl_bss_observe(&t,f,sizeof(base),11)==0);
+        CHECK(!strcmp(rtl_bss_security(&t.entries[0]),"open"));
+        f[34]=0x11;memcpy(f+sizeof(base),wpa,sizeof(wpa));n=sizeof(base)+sizeof(wpa);
+        CHECK(rtl_bss_observe(&t,f,n,11)==0&&!strcmp(rtl_bss_security(&t.entries[0]),"WPA"));
+        memcpy(f+n,rsn_psk,sizeof(rsn_psk));n+=sizeof(rsn_psk);
+        CHECK(rtl_bss_observe(&t,f,n,11)==0&&!strcmp(rtl_bss_security(&t.entries[0]),"WPA+RSN"));
+        memcpy(f+n,wpa,sizeof(wpa));n+=sizeof(wpa);
+        CHECK(rtl_bss_observe(&t,f,n,11)==0&&t.entries[0].wpa_status==RTL_RSN_MALFORMED);
+        CHECK(!strcmp(rtl_bss_security(&t.entries[0]),"unknown-invalid-IE"));
+    }
     fresh(&t);len=fixture(f);CHECK(rtl_bss_observe(&t,f,len,11)==0);
     CHECK(t.count==1&&t.accepted==1&&!t.rejected);
     CHECK(t.entries[0].channel==11&&t.entries[0].received_channel==11);

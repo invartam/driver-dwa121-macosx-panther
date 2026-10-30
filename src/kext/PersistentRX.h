@@ -39,6 +39,7 @@ class PantherRXEngine : public IOEventSource {
     static void timedOut(OSObject *, IOTimerEventSource *);
     static void controlFrame(void *, unsigned int, const rtl_u8 *, unsigned int);
     static IOReturn controlAction(OSObject *, void *, void *, void *, void *);
+    static IOReturn snapshotAction(OSObject *,void *,void *,void *,void *);
     static IOReturn captureAction(OSObject *, void *, void *, void *, void *);
     static IOReturn encryptedAction(OSObject *,void *,void *,void *,void *);
     static IOReturn beginAction(OSObject *, void *, void *, void *, void *);
@@ -60,6 +61,7 @@ public:
     IOReturn setCapture(bool);
     IOReturn setEncryptedCapture(bool);
     bool begin();
+    bool scanSnapshot(rtl_bss_table *);
     /* Must be called outside this engine's workloop; prevents rearming first,
      * aborts once, then waits outside the gate. Idempotent. Late callbacks own
      * the engine/DMA buffer/pipe/service until return, even if drain times out. */

@@ -29,6 +29,9 @@ int rtl8188cu_rx_enable(const struct rtl_bus *, struct rtl_dma_report *);
 /* Extend active RX-only monitor to data frames for software EAPOL filtering.
  * TX DMA/queues and security remain disabled. Failure quiesces RX. */
 int rtl8188cu_rx_control_enable(const struct rtl_bus *);
+/* Only between drained RX engines, with no control/TX owner. Verifies the
+ * exact passive configuration, then gates MAC/DMA alone; failure stops RX. */
+int rtl8188cu_rx_scan_gate(const struct rtl_bus *, int running);
 int rtl8188cu_rx_disable(const struct rtl_bus *);
 /* Parses bounded USB aggregates with 24-byte LE descriptors, info/shift fields
  * and 128-byte alignment. APPFCS must be enabled. No frame data retained.

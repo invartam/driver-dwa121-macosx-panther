@@ -9,11 +9,14 @@ mkdir -p "$out/DWA121AirPortP02.kext/Contents/MacOS"
 kernel=/System/Library/Frameworks/Kernel.framework/Headers
 flags="-arch ppc -mcpu=750 -static -mlong-branch -msoft-float -mno-altivec -fno-common -fno-builtin -DKERNEL -DKERNEL_PRIVATE -DDRIVER_PRIVATE -I$kernel -Wall -Werror -O2"
 g++ $flags -fapple-kext -fno-exceptions -fno-rtti -c src/airport/AirPortDWA121.cpp -o "$out/airport.o"
+gcc $flags -c src/net80211/scan.c -o "$out/scan.o"
 gcc $flags -c src/airport/module.c -o "$out/module.o"
-ld -arch ppc -r -o "$out/DWA121AirPortP02.kext/Contents/MacOS/DWA121AirPortP02" "$out/airport.o" "$out/module.o" -lkmodc++ -lcc_kext
+ld -arch ppc -r -o "$out/DWA121AirPortP02.kext/Contents/MacOS/DWA121AirPortP02" "$out/airport.o" "$out/scan.o" "$out/module.o" -lkmodc++ -lcc_kext
 cp src/airport/Info.plist "$out/DWA121AirPortP02.kext/Contents/Info.plist"
 gcc -arch ppc -mcpu=750 -Wall -Werror -O2 src/tools/dwa121-airport.c -F/System/Library/PrivateFrameworks -framework Apple80211 -framework IOKit -framework CoreFoundation -o "$out/dwa121-airport"
 gcc -arch ppc -mcpu=750 -Wall -Werror -O2 src/tools/dwa121-airport-service.c -framework SystemConfiguration -framework IOKit -framework CoreFoundation -o "$out/dwa121-airport-service"
 gcc -arch ppc -mcpu=750 -Wall -Werror -O2 tests/airport_preferences_test.c -framework CoreFoundation -o "$out/airport-preferences-test"
 gcc -arch ppc -mcpu=750 -Wall -Werror -O2 src/tools/dwa121-airport-monitor.c -framework SystemConfiguration -framework IOKit -framework CoreFoundation -o "$out/dwa121-airport-monitor"
 gcc -arch ppc -mcpu=750 -Wall -Werror -O2 tests/airport_service_test.c -framework SystemConfiguration -framework CoreFoundation -o "$out/airport-service-test"
+gcc -arch ppc -mcpu=750 -Wall -Werror -O2 tests/airport_scan_test.c -framework IOKit -framework CoreFoundation -o "$out/airport-scan-test"
+gcc -arch ppc -mcpu=750 -Wall -Werror -O2 src/net80211/scan.c tests/scan_test.c -o "$out/scan-test"

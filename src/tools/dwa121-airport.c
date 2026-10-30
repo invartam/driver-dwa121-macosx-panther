@@ -12,6 +12,7 @@ extern int WirelessGetPower(void *,unsigned char *);
 extern int WirelessGetEnabled(void *,unsigned char *);
 extern int WirelessGetInfo2(void *,void *);
 extern int WirelessDetach(void *);
+extern int WirelessScan(void *,CFArrayRef *,unsigned int);
 static int checkTransport(unsigned char power,unsigned char enabled,const unsigned char *native)
 {
     io_service_t service,provider=0,controller=0;io_connect_t c=0;CFTypeRef state;
@@ -80,9 +81,32 @@ static int holdUntilDetached(void)
     printf("HOLD: detached=%d RPC=0x%08x; keeping handle for 10 seconds\n",ok,r);fflush(stdout);
     sleep(10);IOServiceClose(c);return ok?0:1;
 }
+static int scan(void)
+{
+    void *ref=0;CFArrayRef results=0;int r,failed=0;CFIndex i;
+    r=WirelessAttach(&ref,0);if(r||!ref)return 1;
+    r=WirelessScan(ref,&results,0);
+    printf("WirelessScan=0x%08x count=%ld\n",r,results?(long)CFArrayGetCount(results):-1L);
+    if(r)failed=1;
+    if(results){
+        for(i=0;i<CFArrayGetCount(results);++i){
+            CFDataRef d=(CFDataRef)CFArrayGetValueAtIndex(results,i);
+            const unsigned char *p;unsigned int n,j;
+            if(CFGetTypeID(d)!=CFDataGetTypeID()||CFDataGetLength(d)!=50){failed=1;continue;}
+            p=CFDataGetBytePtr(d);n=((unsigned int)p[16]<<8)|p[17];
+            if(n>32){failed=1;continue;}
+            printf("BSS %ld channel=%u BSSID=%02x:%02x:%02x:%02x:%02x:%02x caps=%02x%02x SSID[%u]=",
+                (long)i,((unsigned int)p[0]<<8)|p[1],p[6],p[7],p[8],p[9],p[10],p[11],p[14],p[15],n);
+            for(j=0;j<n;++j)printf("%02x",p[18+j]);puts("");
+        }
+        CFRelease(results);
+    }
+    if(WirelessDetach(ref))failed=1;return failed;
+}
 int main(int argc,char **argv)
 {
     void *ref=0;unsigned char power=255,enabled=255,info[66];int r,p,e,d,i;
+    if(argc==2&&!strcmp(argv[1],"--scan"))return scan();
     if(argc==2&&!strcmp(argv[1],"--hold-until-detached"))return holdUntilDetached();
     if(argc!=1)return 1;
     printf("Apple80211 WirelessIsAvailable=%d\n",WirelessIsAvailable());

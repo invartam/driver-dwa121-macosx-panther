@@ -23,6 +23,7 @@ gcc $flags -c src/control/wpa.c -o build/wpa-abi.o
 gcc $flags -c src/control/association.c -o build/association-abi.o
 g++ $flags -fapple-kext -fno-exceptions -fno-rtti -c src/kext/AssociationControl.cpp -o build/association-control.o
 gcc $flags -c src/rtl8188cu/rx.c -o build/rx.o
+gcc $flags -c src/net80211/scan.c -o build/scan.o
 gcc $flags -c src/net80211/beacon.c -o build/beacon.o
 g++ $flags -fapple-kext -fno-exceptions -fno-rtti -c src/kext/PersistentRX.cpp -o build/persistent-rx.o
 gcc $flags -c src/usb/rx_lifecycle.c -o build/rx-lifecycle.o
@@ -37,5 +38,5 @@ gcc $flags -c src/control/frame_queue.c -o build/frame-queue.o
 gcc $flags -c src/control/protocol.c -o build/control-protocol.o
 gcc $flags -c src/kext/module.c -o build/module.o
 ld -arch ppc -r -o build/DWA121Diagnostic.kext/Contents/MacOS/DWA121Diagnostic \
-    build/wpa-abi.o build/station-hw.o build/association-abi.o build/association-control.o build/diagnostic.o build/identity.o build/firmware.o build/radio.o build/dma.o build/cam.o build/txpower.o build/tx.o build/rx.o build/passive-rx.o build/persistent-rx.o build/rx-lifecycle.o build/tx-lifecycle.o build/async-tx.o build/tx-probe.o build/beacon.o build/control-client.o build/frame-queue.o build/control-protocol.o build/network.o build/network-bridge.o build/network-interface.o build/module.o -lkmodc++ -lcc_kext
+    build/wpa-abi.o build/station-hw.o build/association-abi.o build/association-control.o build/diagnostic.o build/identity.o build/firmware.o build/radio.o build/dma.o build/cam.o build/txpower.o build/tx.o build/rx.o build/passive-rx.o build/persistent-rx.o build/rx-lifecycle.o build/tx-lifecycle.o build/async-tx.o build/tx-probe.o build/beacon.o build/scan.o build/control-client.o build/frame-queue.o build/control-protocol.o build/network.o build/network-bridge.o build/network-interface.o build/module.o -lkmodc++ -lcc_kext
 cp src/kext/Info.plist build/DWA121Diagnostic.kext/Contents/Info.plist

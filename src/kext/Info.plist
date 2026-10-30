@@ -13,9 +13,9 @@
 	<key>CFBundlePackageType</key>
 	<string>KEXT</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.15.0</string>
+	<string>0.15.1</string>
 	<key>CFBundleVersion</key>
-	<string>0.15.0</string>
+	<string>0.15.1</string>
 	<key>IOKitPersonalities</key>
 	<dict>
 		<key>DWA121 Network</key><dict><key>CFBundleIdentifier</key><string>local.dwa121.Diagnostic</string><key>IOClass</key><string>DWA121NetworkInterface</string><key>IOProviderClass</key><string>DWA121Diagnostic</string><key>IOPropertyMatch</key><dict><key>NetworkSessionEnabled</key><true/></dict></dict>

@@ -7,6 +7,8 @@
 #include "../control/association.h"
 #include "../control/wpa.h"
 #include "../control/network.h"
+#include "../net80211/scan.h"
+#include "../rtl8188cu/rx.h"
 class PantherTXEngine;
 class IOUSBPipe;
 class IOTimerEventSource;
@@ -20,6 +22,15 @@ struct PantherBusContext;
 class DWA121Diagnostic : public IOService {
     OSDeclareDefaultStructors(DWA121Diagnostic)
     PantherRXEngine *liveRX;
+    IOUSBPipe *liveRXPipe;
+    IOTimerEventSource *scanTimer;
+    bool scanTimerAdded,scanActive,scanValid;
+    unsigned int scanChannel,scanHome;
+    rtl_u32 scanGeneration,scanCompleted;
+    rtl_bss_table *scanTable,*scanScratch;
+    static void scanStep(OSObject *,IOTimerEventSource *);
+    bool scanTuneLocked(unsigned int);
+    void scanCancelLocked();
     IOUSBInterface *liveInterface;
     PantherBusContext *liveContext;
     struct rtl_bus liveBus;
@@ -55,6 +66,7 @@ public:
     virtual IOReturn message(UInt32 type,IOService *provider,void *argument=0);
     virtual void stop(IOService *provider);
     virtual void free();
+    virtual IOReturn callPlatformFunction(const OSSymbol *,bool,void *,void *,void *,void *);
     virtual IOReturn setProperties(OSObject *properties);
     virtual IOReturn newUserClient(task_t,void *,UInt32,IOUserClient **);
     IOReturn claimControl(DWA121ControlClient *);

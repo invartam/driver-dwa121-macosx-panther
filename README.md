@@ -8,7 +8,20 @@ Télécharger le fichier `DWA121-0.15.0-Panther-PPC.tgz` de la [release v0.15.0]
 
 La clé dérivée est conservée dans `/Library/Application Support/DWA121/network.conf` sous root avec les permissions 0600. Ce fichier est un secret : ne pas le joindre aux rapports de diagnostic. Le paquet ne contient aucune configuration Wi-Fi personnelle.
 
-## Portée du MVP
+## Prototype AirPort P0.3.1 (branche v1)
+
+Cette branche ajoute un scan passif réel des canaux 1 à 11 et l'affichage des SSID
+dans le menu AirPort natif de Panther. Prototype validé en VM avec la vraie clé ;
+association native, RSSI et validation PowerBook USB 1.1 restent ouverts.
+Le scan est refusé pendant une connexion WPA2. Un correctif de l'horloge Mach du
+supplicant évite aussi un débordement sur Panther PPC. Ces modifications ne sont
+pas incluses dans le paquet v0.15.0 ci-dessus.
+
+Voir l'[architecture](docs/airport-p031-architecture.md) et les
+[tests, preuve visuelle et restauration](docs/airport-p031-tests.md). Le compagnon
+et le cœur expérimental se chargent séparément, sans remplacer la référence.
+
+## Portée du MVP v0.15.0
 
 - DWA-121 A1 uniquement, bandes 2,4 GHz et canaux 1 à 11 saisis manuellement.
 - WPA2-PSK/AES-CCMP sans PMF obligatoire. Pas de WPA3, WPA-Enterprise, TKIP, SSID caché ou roaming.

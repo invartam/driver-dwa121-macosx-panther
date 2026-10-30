@@ -38,7 +38,7 @@ int main(void)
 {
     static struct mock m;static rtl_u8 buf[RTL_RX_BUFFER_SIZE+1];
     struct rtl_bus b;struct rtl_dma_report r;struct rtl_rx_stats s;
-    unsigned int calls,fault,mode,n,len,seed=0x12345678,enable_calls,stop_calls,control_calls;
+    unsigned int calls,fault,mode,n,len,seed=0x12345678,enable_calls,stop_calls,control_calls,gate_calls;
     setup(&m,&b);CHECK(rtl8188cu_dma_init(&b,2,&r)==0);calls=m.calls;
     CHECK(r.llt_written==256&&r.llt_verified==256);
     CHECK(m.llt[247]==248&&m.llt[248]==255&&m.llt[249]==250&&m.llt[255]==249);
@@ -50,6 +50,10 @@ int main(void)
     m.calls=0;CHECK(rtl8188cu_rx_control_enable(&b)==0);control_calls=m.calls;
     CHECK(get(m.regs+0x608,4)==0x9000680fU && get(m.regs+0x6a4,2)==0xffff);
     CHECK(get(m.regs+0x100,2)==0x2fa && get(m.regs+0x522,1)==0xff && !get(m.regs+0x680,2));
+    m.calls=0;CHECK(rtl8188cu_rx_scan_gate(&b,0)==0);gate_calls=m.calls;
+    CHECK(get(m.regs+0x100,2)==0&&get(m.regs+0x608,4)==0x9000680fU);
+    m.calls=0;CHECK(rtl8188cu_rx_scan_gate(&b,1)==0&&m.calls==gate_calls);
+    CHECK(get(m.regs+0x100,2)==0x2fa);
     m.calls=0;CHECK(rtl8188cu_rx_disable(&b)==0);stop_calls=m.calls;
     for(mode=0;mode<2;++mode)for(fault=1;fault<=calls;++fault){
         setup(&m,&b);m.fail=fault;m.after=mode;
@@ -67,6 +71,20 @@ int main(void)
         m.calls=0;m.fail=fault;m.after=mode;
         CHECK(rtl8188cu_rx_control_enable(&b)!=0 && get(m.regs+0x100,2)==0);
         CHECK(get(m.regs+0x6a4,2)==0);
+    }
+    for(n=0;n<2;++n)for(mode=0;mode<2;++mode)for(fault=1;fault<=gate_calls;++fault){
+        setup(&m,&b);r.llt_verified=256;CHECK(rtl8188cu_rx_enable(&b,&r)==0);
+        CHECK(rtl8188cu_rx_control_enable(&b)==0);
+        if(n)CHECK(rtl8188cu_rx_scan_gate(&b,0)==0);
+        m.calls=0;m.fail=fault;m.after=mode;
+        CHECK(rtl8188cu_rx_scan_gate(&b,(int)n)!=0&&get(m.regs+0x100,2)==0);
+    }
+    /* Reject station/crypto/TX configurations rather than resuming them. */
+    for(n=0;n<7;++n){
+        const unsigned int addr[]={0x100,0x522,0x680,0x608,0x6a0,0x6a2,0x6a4};
+        setup(&m,&b);r.llt_verified=256;CHECK(rtl8188cu_rx_enable(&b,&r)==0);
+        CHECK(rtl8188cu_rx_control_enable(&b)==0);m.regs[addr[n]]^=1;
+        CHECK(rtl8188cu_rx_scan_gate(&b,0)!=0&&get(m.regs+0x100,2)==0);
     }
     setup(&m,&b);CHECK(rtl8188cu_rx_control_enable(&b)==RTL_UNSUPPORTED);
     setup(&m,&b);m.timeout=1;CHECK(rtl8188cu_dma_init(&b,2,&r)==RTL_TIMEOUT);
@@ -93,6 +111,6 @@ int main(void)
         for(i=0;i<len;++i){seed=seed*1664525U+1013904223U;buf[i]=(rtl_u8)(seed>>24);}
         memset(&s,0,sizeof(s));rtl8188cu_rx_parse(buf,len,&s);
     }
-    printf("PASS: LLT readback/topology, control RX filter, TX DMA/queues blocked, %u injected DMA/RX faults; descriptor bounds/shift/aggregation/FCS, 10000 malformed-buffer trials\n",calls*2+enable_calls*2+stop_calls+control_calls*2);
+    printf("PASS: LLT readback/topology, control RX filter, TX DMA/queues blocked, %u injected DMA/RX faults; descriptor bounds/shift/aggregation/FCS, 10000 malformed-buffer trials\n",calls*2+enable_calls*2+stop_calls+control_calls*2+gate_calls*4);
     return 0;
 }

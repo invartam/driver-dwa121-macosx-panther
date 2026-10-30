@@ -129,3 +129,22 @@ int rtl8188cu_rx_enable(const struct rtl_bus *b,struct rtl_dma_report *r)
     return RTL_OK;
 fail:r->cleanup_error=rtl8188cu_rx_disable(b);return error;
 }
+/* Channel-only pause/resume of the already configured passive monitor.
+ * Do not reinitialize BB/filter/security on every hop. All preconditions are
+ * read back: this can never resume a station/TX/crypto configuration. */
+int rtl8188cu_rx_scan_gate(const struct rtl_bus *b,int running)
+{
+    rtl_u32 v;int error;
+    if(!b||!b->read||!b->write||(running!=0&&running!=1))return RTL_BAD_ARGUMENT;
+    TRY(rd(b,0x100,2,&v));if(v!=(running?0U:0x2faU)){error=RTL_UNSUPPORTED;goto fail;}
+    TRY(rd(b,0x522,1,&v));if(v!=0xff){error=RTL_UNSUPPORTED;goto fail;}
+    TRY(rd(b,0x680,2,&v));if(v){error=RTL_UNSUPPORTED;goto fail;}
+    TRY(rd(b,0x608,4,&v));if(v!=0x9000680fU){error=RTL_UNSUPPORTED;goto fail;}
+    TRY(rd(b,0x6a0,2,&v));if(v!=0xffff){error=RTL_UNSUPPORTED;goto fail;}
+    TRY(rd(b,0x6a2,2,&v));if(v){error=RTL_UNSUPPORTED;goto fail;}
+    TRY(rd(b,0x6a4,2,&v));if(v!=0xffff){error=RTL_UNSUPPORTED;goto fail;}
+    TRY(wr(b,0x100,2,running?0x2fa:0));
+    TRY(rd(b,0x100,2,&v));if(v!=(running?0x2faU:0U)){error=RTL_IO;goto fail;}
+    return RTL_OK;
+fail:rtl8188cu_rx_disable(b);return error;
+}

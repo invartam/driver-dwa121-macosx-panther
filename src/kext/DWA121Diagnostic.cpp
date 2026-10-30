@@ -22,6 +22,8 @@
 #include <libkern/c++/OSDictionary.h>
 #include <libkern/c++/OSData.h>
 #include <libkern/c++/OSBoolean.h>
+#include <libkern/c++/OSSymbol.h>
+#include <libkern/c++/OSString.h>
 #include <IOKit/usb/IOUSBDevice.h>
 #include <IOKit/usb/IOUSBInterface.h>
 #include <IOKit/usb/IOUSBPipe.h>
@@ -107,7 +109,12 @@ static bool bssBytes(OSDictionary *d, const char *key, const void *bytes, unsign
     if (!data) return false;
     bool ok = d->setObject(key, data); data->release(); return ok;
 }
-static bool publishBSS(IOService *owner, const struct rtl_bss_table *table)
+static bool bssText(OSDictionary *d,const char *key,const char *value)
+{
+    OSString *s=OSString::withCString(value);if(!s)return false;
+    bool ok=d->setObject(key,s);s->release();return ok;
+}
+static bool publishBSS(IOService *owner, const struct rtl_bss_table *table,bool scan=false)
 {
     OSArray *list = OSArray::withCapacity(RTL_BSS_MAX);
     if (!list) return false;
@@ -116,14 +123,18 @@ static bool publishBSS(IOService *owner, const struct rtl_bss_table *table)
         const struct rtl_bss *b = &table->entries[i];
         OSDictionary *d = OSDictionary::withCapacity(16);
         if (!d) { ok = false; break; }
-        ok = bssBytes(d, "BSSID", b->bssid, 6) &&
+        ok = bssText(d,"AdvertisedSecurity",rtl_bss_security(b)) &&
+             bssBytes(d, "BSSID", b->bssid, 6) &&
              bssBytes(d, "SSID", b->ssid, b->ssid_length) &&
              bssBytes(d, "RSNInformationElement", b->rsn_ie, b->rsn_length) &&
+             bssBytes(d, "WPAInformationElement", b->wpa_ie, b->wpa_length) &&
+             bssNumber(d, "WPAStatus", b->wpa_status) &&
              bssNumber(d, "AdvertisedChannel", b->channel) &&
              bssNumber(d, "ReceivedChannel", b->received_channel) &&
              bssNumber(d, "BeaconIntervalTU", b->beacon_interval) &&
              bssNumber(d, "Capabilities", b->capabilities) &&
              bssNumber(d, "Observations", b->observations) &&
+             bssNumber(d, "LastSeenMonotonicMS", b->last_seen_ms) &&
              bssNumber(d, "RSNStatus", b->rsn.status) &&
              bssNumber(d, "RSNCapabilities", b->rsn.capabilities) &&
              d->setObject("HiddenSSID", b->hidden ? kOSBooleanTrue : kOSBooleanFalse) &&
@@ -133,8 +144,8 @@ static bool publishBSS(IOService *owner, const struct rtl_bss_table *table)
              list->setObject(d);
         d->release();
     }
-    if (ok) ok = owner->setProperty("DiscoveredBSS", list) &&
-        owner->setProperty("BSSCount", table->count, 32) &&
+    if (ok) ok = owner->setProperty(scan?"PassiveScanBSS":"DiscoveredBSS", list);
+    if (ok&&!scan) ok = owner->setProperty("BSSCount", table->count, 32) &&
         owner->setProperty("BSSObservations", table->accepted, 32) &&
         owner->setProperty("BSSRejected", table->rejected, 32) &&
         owner->setProperty("BSSDropped", table->dropped, 32);
@@ -180,6 +191,8 @@ bool DWA121Diagnostic::init(OSDictionary *dictionary)
 {
     liveRX=0; liveInterface=0; liveContext=0; lifecycleLock=0; serviceLoop=0;networkBridge=0;
     usbTerminating=false;
+    liveRXPipe=0;scanTimer=0;scanTimerAdded=scanActive=scanValid=false;
+    scanChannel=scanHome=scanGeneration=scanCompleted=0;scanTable=scanScratch=0;
     controlOwner=0; liveTX=0; liveHighPipe=liveNormalPipe=0; liveChannel=0;
     associationTimer=0; associationTimerAdded=false;
     bzero(&liveIdentity,sizeof(liveIdentity)); bzero(livePeer,sizeof(livePeer));
@@ -197,6 +210,13 @@ bool DWA121Diagnostic::init(OSDictionary *dictionary)
     associationTimer=IOTimerEventSource::timerEventSource(this,associationExpired);
     if(!associationTimer || serviceLoop->addEventSource(associationTimer)!=kIOReturnSuccess) return false;
     associationTimerAdded=true;
+    scanTable=(rtl_bss_table *)IOMalloc(sizeof(*scanTable));
+    scanScratch=(rtl_bss_table *)IOMalloc(sizeof(*scanScratch));
+    scanTimer=IOTimerEventSource::timerEventSource(this,scanStep);
+    if(!scanTable||!scanScratch||!scanTimer)return false;
+    bzero(scanTable,sizeof(*scanTable));bzero(scanScratch,sizeof(*scanScratch));
+    if(serviceLoop->addEventSource(scanTimer)!=kIOReturnSuccess)return false;
+    scanTimerAdded=true;
     return true;
 }
 IOWorkLoop *DWA121Diagnostic::getWorkLoop() const
@@ -233,6 +253,7 @@ bool DWA121Diagnostic::stopLive()
 }
 bool DWA121Diagnostic::stopLiveLocked()
 {
+    scanCancelLocked();
     if(networkBridge)dwa_net_reset(networkBridge);
     setProperty("NetworkSessionActive",false);
     if(associationTimer) associationTimer->cancelTimeout();
@@ -296,7 +317,7 @@ bool DWA121Diagnostic::stopLiveLocked()
         liveContext->device->release();
         IOFree(liveContext,sizeof(*liveContext)); liveContext=0;
         liveInterface->release(); liveInterface=0;
-        liveHighPipe=liveNormalPipe=0; bzero(livePeer,sizeof(livePeer));
+        liveHighPipe=liveNormalPipe=liveRXPipe=0; bzero(livePeer,sizeof(livePeer));
         IOLog("DWA121Diagnostic: persistent cleanup drained=%d RX=%d radio=%d\n",drained,rx,radio);
     } else {
         OSBoolean *verified=OSDynamicCast(OSBoolean,getProperty("PersistentStopVerified"));
@@ -309,7 +330,7 @@ IOReturn DWA121Diagnostic::claimControl(DWA121ControlClient *client)
     IOLockLock(lifecycleLock);
     IOReturn result=kIOReturnNotReady;
     if (liveRX && !isInactive()) {
-        if (controlOwner) result=kIOReturnExclusiveAccess;
+        if (controlOwner || scanActive) result=kIOReturnExclusiveAccess;
         else {
             result=liveRX->setCapture(true);
             if (result==kIOReturnSuccess) controlOwner=client;
@@ -367,6 +388,13 @@ void DWA121Diagnostic::stop(IOService *provider)
 }
 void DWA121Diagnostic::free()
 {
+    if(scanTimer){
+        scanTimer->cancelTimeout();
+        if(scanTimerAdded)serviceLoop->removeEventSource(scanTimer);
+        scanTimer->release();
+    }
+    if(scanTable)IOFree(scanTable,sizeof(*scanTable));
+    if(scanScratch)IOFree(scanScratch,sizeof(*scanScratch));
     if(networkBridge){dwa_net_reset(networkBridge);IOFree(networkBridge,sizeof(*networkBridge));networkBridge=0;}
     if(associationTimer) {
         associationTimer->cancelTimeout();
@@ -606,6 +634,7 @@ bool DWA121Diagnostic::startHardwareLocked(IOService *provider)
         liveContext=saved; liveBus=bus; liveBus.cookie=saved;
         liveInterface=interface; liveInterface->retain(); liveRX=engine;
         liveHighPipe=highPipe; liveNormalPipe=normalPipe;
+        liveRXPipe=rxPipe;
         liveIdentity=identity; liveChannel=rxChannel;
     } else {
     if (result == RTL_OK) {
@@ -757,4 +786,109 @@ bool DWA121Diagnostic::startHardwareLocked(IOService *provider)
     }
     registerService();
     return true;
+}
+
+/* Passive discovery is scheduled on the owner's lifecycle loop, never the USB
+ * completion loop or an AirPort RPC thread. No control client may own it. */
+static rtl_u32 scanNow()
+{
+    AbsoluteTime ticks;UInt64 ns;
+    clock_get_uptime(&ticks);absolutetime_to_nanoseconds(ticks,&ns);
+    return (rtl_u32)(ns/1000000ULL);
+}
+void DWA121Diagnostic::scanCancelLocked()
+{
+    if(scanTimer)scanTimer->cancelTimeout();
+    scanActive=scanValid=false;
+    setProperty("PassiveScanActive",false);
+    setProperty("PassiveScanValid",false);
+    removeProperty("PassiveScanBSS");
+}
+bool DWA121Diagnostic::scanTuneLocked(unsigned int channel)
+{
+    if(!liveRX||!liveRXPipe||controlOwner||liveTX||usbTerminating)return false;
+    PantherRXEngine *next=PantherRXEngine::create(this,liveRXPipe,channel,liveIdentity.mac,publishLive);
+    if(!next)return false;
+    if(!liveRX->shutdown()||!liveRX->scanSnapshot(scanScratch)){next->shutdown();next->release();return false;}
+    rtl_u32 rf=0;
+    bool ok=rtl8188cu_rx_scan_gate(&liveBus,0)==RTL_OK &&
+        rtl8188cu_set_rx_channel(&liveBus,channel,&rf)==RTL_OK &&
+        rtl8188cu_rx_scan_gate(&liveBus,1)==RTL_OK;
+    liveRX->release();liveRX=next;
+    if(!ok)return false;
+    liveChannel=channel;setProperty("RXChannel",channel,32);
+    IOLog("DWA121 scan: tuned passive channel=%u RF=%lx time=%lu\n",channel,(unsigned long)rf,(unsigned long)scanNow());
+    return next->begin();
+}
+void DWA121Diagnostic::scanStep(OSObject *object,IOTimerEventSource *)
+{
+    DWA121Diagnostic *s=(DWA121Diagnostic *)object;
+    IOLockLock(s->lifecycleLock);
+    if(!s->scanActive){IOLockUnlock(s->lifecycleLock);return;}
+    bool ok=!s->usbTerminating&&!s->isInactive()&&s->liveRX&&!s->controlOwner&&!s->liveTX;
+    if(ok&&s->scanChannel){
+        ok=s->liveRX->scanSnapshot(s->scanScratch);
+        if(ok)dwa_scan_merge(s->scanTable,s->scanScratch,scanNow());
+    }
+    if(ok&&s->scanChannel<11){
+        ++s->scanChannel;
+        ok=s->scanTuneLocked(s->scanChannel);
+        if(ok)ok=s->scanTimer->setTimeoutMS(120)==kIOReturnSuccess;
+    } else if(ok){
+        ok=s->liveChannel==s->scanHome||s->scanTuneLocked(s->scanHome);
+        if(ok){
+            s->scanActive=false;s->scanValid=true;s->scanCompleted=scanNow();
+            s->setProperty("PassiveScanActive",false);
+            s->setProperty("PassiveScanValid",true);
+            publishBSS(s,s->scanTable,true);
+            s->setProperty("PassiveScanBSSCount",s->scanTable->count,32);
+            s->setProperty("PassiveScanBeacons",s->scanTable->accepted,32);
+            s->setProperty("PassiveScanDropped",s->scanTable->dropped,32);
+            IOLog("DWA121 scan: complete generation=%lu BSSID=%u beacons=%u home=%u\n",
+                (unsigned long)s->scanGeneration,s->scanTable->count,s->scanTable->accepted,s->scanHome);
+        }
+    }
+    if(!ok){
+        /* An incomplete drain/register failure must never hand an uncertain
+         * radio to WPA2. Quiesce it; explicit reload is required. */
+        IOLog("DWA121 scan: failed; stopping radio\n");
+        s->stopLiveLocked();s->setProperty("PassiveScanFailed",true);
+    }
+    IOLockUnlock(s->lifecycleLock);
+}
+IOReturn DWA121Diagnostic::callPlatformFunction(const OSSymbol *name,bool wait,
+                                               void *p1,void *p2,void *p3,void *p4)
+{
+    bool start=name&&name->isEqualTo(DWA_SCAN_START);
+    bool copy=name&&name->isEqualTo(DWA_SCAN_COPY);
+    if(!start&&!copy)return IOService::callPlatformFunction(name,wait,p1,p2,p3,p4);
+    if(!p1||(copy&&!p2)||p3||p4)return kIOReturnBadArgument;
+    /* Do not block a native UI RPC behind a USB channel change or shutdown. */
+    if(!IOLockTryLock(lifecycleLock))return kIOReturnBusy;
+    IOReturn result=kIOReturnNotReady;
+    if(!usbTerminating&&!isInactive()&&liveRX&&getProperty("RadioRunning")==kOSBooleanTrue){
+        if(start){
+            if(controlOwner||liveTX){result=kIOReturnBusy;setProperty("PassiveScanDeniedOwner",true);}
+            else if(scanActive||(scanValid&&(rtl_u32)(scanNow()-scanCompleted)<2000)){
+                *(rtl_u32 *)p1=scanGeneration;result=kIOReturnSuccess;
+            } else {
+                scanValid=false;scanActive=true;scanChannel=0;scanHome=liveChannel;
+                if(++scanGeneration==0)++scanGeneration;
+                bzero(scanTable,sizeof(*scanTable));
+                removeProperty("PassiveScanBSS");
+                setProperty("PassiveScanValid",false);setProperty("PassiveScanActive",true);
+                setProperty("PassiveScanFailed",false);setProperty("PassiveScanDeniedOwner",false);
+                setProperty("PassiveScanGeneration",scanGeneration,32);
+                *(rtl_u32 *)p1=scanGeneration;
+                result=scanTimer->setTimeoutMS(0);
+                if(result!=kIOReturnSuccess)scanCancelLocked();
+            }
+        } else if(*(rtl_u32 *)p1!=scanGeneration)result=kIOReturnNotReady;
+        else if(scanActive)result=kIOReturnBusy;
+        else if(scanValid){
+            dwa_scan_expire(scanTable,scanNow());
+            *(rtl_bss_table *)p2=*scanTable;result=kIOReturnSuccess;
+        }
+    }
+    IOLockUnlock(lifecycleLock);return result;
 }

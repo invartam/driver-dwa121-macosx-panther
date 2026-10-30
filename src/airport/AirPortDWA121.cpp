@@ -1,4 +1,4 @@
-/* Panther-only, opt-in read-only AirPort control companion.
+/* Panther-only, opt-in AirPort status and passive scan companion.
  * Wire evidence: docs/airport-p02-architecture.md. No Apple code included. */
 #include <IOKit/IOService.h>
 #include <IOKit/IOUserClient.h>
@@ -7,6 +7,8 @@
 #include <libkern/c++/OSBoolean.h>
 #include <libkern/c++/OSData.h>
 #include <libkern/c++/OSString.h>
+#include <kern/clock.h>
+#include "../net80211/scan.h"
 extern "C" {
 #include <sys/proc.h>
 #include <sys/vm.h>
@@ -24,6 +26,7 @@ public:
     virtual bool start(IOService *provider);
     virtual void stop(IOService *provider);
     virtual IOReturn newUserClient(task_t,void *,UInt32,IOUserClient **);
+    IOReturn scan(bool,rtl_u32 *,rtl_bss_table *);
     IOReturn readPower();
     IOReturn readStatus(void *,IOByteCount *);
 };
@@ -32,6 +35,13 @@ class DWA121AirPortClient : public IOUserClient {
     OSDeclareDefaultStructors(DWA121AirPortClient)
     AirPortDWA121 *radio;
     IOExternalMethod method;
+    IOLock *scanLock;
+    rtl_bss_table *snapshot;
+    rtl_u32 generation,snapshotTime;
+    unsigned char requested[33];
+    unsigned int requestedLength;
+    bool snapshotReady;
+    IOReturn scanCommand(unsigned int,void *,void *);
     IOReturn command(void *,void *,IOByteCount,IOByteCount *);
 public:
     virtual bool initWithTask(task_t,void *,UInt32);
@@ -64,7 +74,8 @@ bool AirPortDWA121::start(IOService *provider)
      * The original controller and all packet methods remain untouched. */
     if(!controller->setProperty("IOClass","AirPortDWA121"))return false;
     setProperty("P02ReadOnly",true);
-    setProperty("P02Protocol","Panther radio status / commands 13,18");
+    setProperty("P031RSSIAvailable",false);
+    setProperty("P02Protocol","Panther status 13,18 / passive scan 8,9");
     registerService();return true;
 }
 void AirPortDWA121::detachHardware()
@@ -96,7 +107,6 @@ IOReturn AirPortDWA121::readPower()
     IOLockUnlock(lock);
     if(!value)return kIOReturnNotAttached;
     bool on=value==kOSBooleanTrue;value->release();
-    IOLog("DWA121 AirPort P02: command=13 RadioRunning=%u (native return bits)\n",on?1:0);
     return on?3:0;
 }
 /* AppleAirPort::getWirelessStatus initializes the first word to zero,
@@ -134,18 +144,21 @@ IOReturn AirPortDWA121::newUserClient(task_t task,void *security,UInt32 type,IOU
     if(!c->initWithTask(task,security,type)){c->release();return kIOReturnNoMemory;}
     if(!c->attach(this)){c->release();return kIOReturnNotAttached;}
     if(!c->start(this)){c->detach(this);c->release();return kIOReturnNotReady;}
-    IOLog("DWA121 AirPort P02: opened type=12 (read-only)\n");
     *out=c;return kIOReturnSuccess;
 }
 bool DWA121AirPortClient::initWithTask(task_t task,void *security,UInt32 type)
 {
-    radio=0;bzero(&method,sizeof(method));
+    radio=0;scanLock=0;snapshot=0;generation=snapshotTime=0;snapshotReady=false;
+    requestedLength=0;bzero(requested,sizeof(requested));bzero(&method,sizeof(method));
     if(type!=12||!IOUserClient::initWithTask(task,security,type))return false;
     method.object=this;method.func=(IOMethod)&DWA121AirPortClient::command;
     method.flags=kIOUCStructIStructO;method.count0=0xffffffffU;
     /* Nonzero sentinel preserves four-argument dispatch for zero-length output.
      * AppleAirPort::start uses 0xffffffff at offsets 0x90/0x94. */
-    method.count1=0xffffffffU;return true;
+    method.count1=0xffffffffU;
+    scanLock=IOLockAlloc();snapshot=(rtl_bss_table *)IOMalloc(sizeof(*snapshot));
+    if(snapshot)bzero(snapshot,sizeof(*snapshot));
+    return scanLock&&snapshot;
 }
 bool DWA121AirPortClient::start(IOService *p)
 {
@@ -154,7 +167,11 @@ bool DWA121AirPortClient::start(IOService *p)
     radio=r;radio->retain();return true;
 }
 void DWA121AirPortClient::free()
-{ if(radio){radio->release();radio=0;}IOUserClient::free(); }
+{
+    if(snapshot)IOFree(snapshot,sizeof(*snapshot));
+    if(scanLock)IOLockFree(scanLock);
+    if(radio){radio->release();radio=0;}IOUserClient::free();
+}
 IOReturn DWA121AirPortClient::clientClose()
 { terminate();return kIOReturnSuccess; }
 IOReturn DWA121AirPortClient::clientDied() { return clientClose(); }
@@ -164,10 +181,19 @@ IOReturn DWA121AirPortClient::command(void *in,void *out,IOByteCount n,IOByteCou
 {
     if(!in||!outSize||n<1)return kIOReturnBadArgument;
     struct proc *caller=current_proc();
+    if(*(unsigned char *)in!=9&&*(unsigned char *)in!=13)
     IOLog("DWA121 AirPort P02: caller=%s pid=%d op=%u in=%lu out=%lu\n",
         caller?caller->p_comm:"?",caller?caller->p_pid:-1,
         (unsigned int)*(unsigned char *)in,(unsigned long)n,(unsigned long)*outSize);
     if(isInactive()||!radio)return kIOReturnNotAttached;
+    unsigned int op=*(unsigned char *)in;
+    if(op==8||op==9){
+        if((op==8&&(n!=34||*outSize!=0))||
+           (op==9&&(n!=5||*outSize!=50||!out)))return kIOReturnBadArgument;
+        IOLockLock(scanLock);
+        IOReturn r=scanCommand(op,(unsigned char *)in+1,out);
+        IOLockUnlock(scanLock);return r;
+    }
     if(*(unsigned char *)in==18){
         if(n!=1)return kIOReturnBadArgument;
         return radio->readStatus(out,outSize);
@@ -175,4 +201,68 @@ IOReturn DWA121AirPortClient::command(void *in,void *out,IOByteCount n,IOByteCou
     if(*(unsigned char *)in!=13)return kIOReturnUnsupported;
     if(n!=1||*outSize!=0)return kIOReturnBadArgument;
     return radio->readPower();
+}
+
+IOReturn AirPortDWA121::scan(bool start,rtl_u32 *generation,rtl_bss_table *table)
+{
+    IOLockLock(lock);
+    IOReturn r=kIOReturnNotAttached;
+    if(!isInactive()&&hardware&&!hardware->isInactive())
+        r=hardware->callPlatformFunction(start?DWA_SCAN_START:DWA_SCAN_COPY,
+                                         false,generation,table,0,0);
+    IOLockUnlock(lock);return r;
+}
+static rtl_u32 nativeScanNow()
+{
+    AbsoluteTime ticks;UInt64 ns;
+    clock_get_uptime(&ticks);absolutetime_to_nanoseconds(ticks,&ns);
+    return (rtl_u32)(ns/1000000ULL);
+}
+IOReturn DWA121AirPortClient::scanCommand(unsigned int op,void *in,void *out)
+{
+    const unsigned char *p=(const unsigned char *)in;
+    if(op==8){
+        snapshotReady=false;generation=0;bzero(snapshot,sizeof(*snapshot));
+        if(p[32])return kIOReturnBadArgument;
+        bcopy(p,requested,33);requestedLength=0;
+        while(requestedLength<32&&requested[requestedLength])++requestedLength;
+        for(unsigned int i=requestedLength;i<33;++i)
+            if(requested[i])return kIOReturnBadArgument;
+        IOReturn r=radio->scan(true,&generation,0);
+        IOLog("DWA121 AirPort scan: start result=%08lx generation=%lu\n",
+            (unsigned long)r,(unsigned long)generation);
+        return r;
+    }
+    if(!generation)return (IOReturn)0x20000109;
+    /* Even a retained client snapshot must disappear when the radio stops. */
+    if(radio->readPower()!=3){snapshotReady=false;generation=0;return (IOReturn)0x20000109;}
+    if(!snapshotReady){
+        IOReturn r=radio->scan(false,&generation,snapshot);
+        if(r==kIOReturnBusy)return (IOReturn)0x20000108;
+        if(r!=kIOReturnSuccess){
+            /* Panther advances its index on arbitrary errors. Always end a
+             * cancelled/invalidated scan, rather than an unbounded error loop. */
+            generation=0;return (IOReturn)0x20000109;
+        }
+        snapshotTime=nativeScanNow();
+        rtl_u32 now=snapshotTime;
+        for(unsigned int i=0;i<snapshot->count;++i)
+            if((rtl_u32)(now-snapshot->entries[i].last_seen_ms)>(rtl_u32)(now-snapshotTime))
+                snapshotTime=snapshot->entries[i].last_seen_ms;
+        snapshotReady=true;
+    }
+    if((rtl_u32)(nativeScanNow()-snapshotTime)>=DWA_SCAN_TTL_MS)return (IOReturn)0x20000109;
+    rtl_u32 index=((rtl_u32)p[0]<<24)|((rtl_u32)p[1]<<16)|((rtl_u32)p[2]<<8)|p[3];
+    unsigned int n=0;
+    unsigned char record[50];
+    for(unsigned int i=0;i<snapshot->count;++i){
+        const rtl_bss *b=&snapshot->entries[i];
+        if(requestedLength&&(b->ssid_length!=requestedLength||
+            bcmp(b->ssid,requested,requestedLength)))continue;
+        if(!dwa_scan_native(b,record))continue;
+        if(n++==index){bcopy(record,out,50);return kIOReturnSuccess;}
+    }
+    IOLog("DWA121 AirPort scan: end generation=%lu native=%u BSSID=%u\n",
+        (unsigned long)generation,n,snapshot->count);
+    return (IOReturn)0x20000109;
 }

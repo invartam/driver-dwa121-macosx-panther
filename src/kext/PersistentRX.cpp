@@ -58,7 +58,7 @@ void PantherRXEngine::completed(void *, void *parameter, IOReturn status, UInt32
 void PantherRXEngine::controlFrame(void *cookie, unsigned int kind, const rtl_u8 *frame, unsigned int bytes)
 {
     PantherRXEngine *e=(PantherRXEngine *)cookie;
-    if (kind==RTL_RX_BEACON) rtl_bss_observe(&e->table,frame,bytes,e->channel);
+    if (kind==RTL_RX_BEACON) rtl_bss_observe_at(&e->table,frame,bytes,e->channel,monotonicMS());
     if (e->capture) dwa_frame_queue_push(&e->frames,kind,e->channel,monotonicMS(),frame,bytes);
 }
 IOReturn PantherRXEngine::captureAction(OSObject *object,void *enabled,void *,void *,void *)
@@ -294,4 +294,15 @@ void PantherRXEngine::free()
     IOService *s=service;
     IOEventSource::free();
     if (s) s->release();
+}
+
+IOReturn PantherRXEngine::snapshotAction(OSObject *o,void *out,void *,void *,void *)
+{
+    PantherRXEngine *e=(PantherRXEngine *)o;
+    *(rtl_bss_table *)out=e->table;return e->report.usb.usbErrors?kIOReturnIOError:kIOReturnSuccess;
+}
+bool PantherRXEngine::scanSnapshot(rtl_bss_table *out)
+{
+    if(detached){*out=table;return report.usb.usbErrors==0;}
+    return gate->runAction(snapshotAction,out)==kIOReturnSuccess;
 }

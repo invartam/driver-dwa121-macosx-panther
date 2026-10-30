@@ -66,3 +66,6 @@ cc -std=c89 -pedantic -Wall -Wextra -Werror -fsanitize=address,undefined -g src/
 ./artifacts/network-test-host
 cc -std=c89 -D_DARWIN_C_SOURCE -Wall -Wextra -Werror -fsanitize=address,undefined -g src/config/config.c tests/config_test.c -o artifacts/config-test-host
 ./artifacts/config-test-host
+
+cc -std=c89 -pedantic -Wall -Wextra -Werror -fsanitize=address,undefined -g src/net80211/scan.c tests/scan_test.c -o artifacts/scan-test-host
+./artifacts/scan-test-host
