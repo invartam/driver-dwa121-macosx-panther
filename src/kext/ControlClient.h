@@ -9,6 +9,9 @@ class DWA121ControlClient : public IOUserClient {
     IOExternalMethod associationMethod;
     IOExternalMethod wpaMethod;
     IOExternalMethod networkMethod;
+    IOExternalMethod airportMethod;
+    bool nativeOwner;
+    IOReturn airport(void *,void *,IOByteCount,IOByteCount *);
     IOReturn network(void *,void *,IOByteCount,IOByteCount *);
     IOReturn command(void *,void *,IOByteCount,IOByteCount *);
     IOReturn association(void *,void *,IOByteCount,IOByteCount *);

@@ -24,7 +24,7 @@ void DWA121Diagnostic::associationExpired(OSObject *owner,IOTimerEventSource *)
 {
     DWA121Diagnostic *d=(DWA121Diagnostic *)owner;
     IOLockLock(d->lifecycleLock);
-    if(d->usbTerminating||d->liveTX) {
+    if(d->usbTerminating||d->liveTX||d->airportReserved) {
         d->setProperty("AssociationDeadlineExpired",true);
         d->stopLiveLocked();
     }
@@ -40,6 +40,8 @@ IOReturn DWA121Diagnostic::associationCommand(DWA121ControlClient *client,
     do {
         if(controlOwner!=client || !liveRX || isInactive()) break;
         if(dwa_assoc_validate(r,liveIdentity.mac)!=RTL_OK) { result=kIOReturnBadArgument; break; }
+        if(airportReserved&&r->operation==DWA_ASSOC_BEGIN&&
+           (r->channel!=airportTargetState.channel||bcmp(r->bssid,airportTargetState.bssid,6))){result=kIOReturnNotPermitted;break;}
         if(getProperty("AssociationTXEnabled")!=kOSBooleanTrue) { result=kIOReturnUnsupported; break; }
         if(r->operation==DWA_ASSOC_END) {
             if(!liveTX) break;

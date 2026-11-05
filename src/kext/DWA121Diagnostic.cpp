@@ -190,7 +190,8 @@ static void publishLive(IOService *owner, const PantherLiveReport *r, const rtl_
 bool DWA121Diagnostic::init(OSDictionary *dictionary)
 {
     liveRX=0; liveInterface=0; liveContext=0; lifecycleLock=0; serviceLoop=0;networkBridge=0;
-    usbTerminating=false;
+    usbTerminating=false;airportReserved=false;airportSequence=0;
+    bzero(&airportTargetState,sizeof(airportTargetState));
     liveRXPipe=0;scanTimer=0;scanTimerAdded=scanActive=scanValid=false;
     scanChannel=scanHome=scanGeneration=scanCompleted=0;scanTable=scanScratch=0;
     controlOwner=0; liveTX=0; liveHighPipe=liveNormalPipe=0; liveChannel=0;
@@ -254,6 +255,8 @@ bool DWA121Diagnostic::stopLive()
 bool DWA121Diagnostic::stopLiveLocked()
 {
     scanCancelLocked();
+    if(airportReserved)airportTargetState.phase=DWA_AP_FAILED;
+    airportReserved=false;
     if(networkBridge)dwa_net_reset(networkBridge);
     setProperty("NetworkSessionActive",false);
     if(associationTimer) associationTimer->cancelTimeout();
@@ -325,15 +328,15 @@ bool DWA121Diagnostic::stopLiveLocked()
     }
     return ok;
 }
-IOReturn DWA121Diagnostic::claimControl(DWA121ControlClient *client)
+IOReturn DWA121Diagnostic::claimControl(DWA121ControlClient *client,bool native)
 {
     IOLockLock(lifecycleLock);
     IOReturn result=kIOReturnNotReady;
     if (liveRX && !isInactive()) {
-        if (controlOwner || scanActive) result=kIOReturnExclusiveAccess;
+        if (controlOwner || scanActive || (native?(!airportReserved||airportTargetState.phase!=DWA_AP_PREPARED):airportReserved)) result=kIOReturnExclusiveAccess;
         else {
             result=liveRX->setCapture(true);
-            if (result==kIOReturnSuccess) controlOwner=client;
+            if (result==kIOReturnSuccess){controlOwner=client;if(native)airportTargetState.phase=DWA_AP_RUNNING;}
         }
     }
     IOLockUnlock(lifecycleLock); return result;
@@ -343,7 +346,8 @@ void DWA121Diagnostic::releaseControl(DWA121ControlClient *client)
     IOLockLock(lifecycleLock);
     if (controlOwner==client) {
         if(liveTX) stopLiveLocked();
-        else { if (liveRX) liveRX->setCapture(false); controlOwner=0; }
+        else { if (liveRX) liveRX->setCapture(false); controlOwner=0;
+            if(airportReserved){airportReserved=false;airportTargetState.phase=DWA_AP_FAILED;associationTimer->cancelTimeout();} }
     }
     IOLockUnlock(lifecycleLock);
 }
@@ -362,7 +366,7 @@ IOReturn DWA121Diagnostic::newUserClient(task_t task,void *security,UInt32 type,
 {
     if (!handler) return kIOReturnBadArgument;
     *handler=0;
-    if (type!=DWA_CONTROL_TYPE) return kIOReturnUnsupported;
+    if (type!=DWA_CONTROL_TYPE&&type!=DWA_AIRPORT_OWNER_TYPE) return kIOReturnUnsupported;
     IOReturn privilege=IOUserClient::clientHasPrivilege(task,kIOClientPrivilegeAdministrator);
     if (privilege!=kIOReturnSuccess) return privilege;
     DWA121ControlClient *client=new DWA121ControlClient;
@@ -415,7 +419,7 @@ bool DWA121Diagnostic::start(IOService *provider)
     IOLockUnlock(lifecycleLock);
     return ok;
 }
-bool DWA121Diagnostic::startHardwareLocked(IOService *provider)
+bool DWA121Diagnostic::startHardwareLocked(IOService *provider,bool restarting)
 {
     IOUSBInterface *interface = OSDynamicCast(IOUSBInterface, provider);
     IOUSBDevice *device;
@@ -455,10 +459,10 @@ bool DWA121Diagnostic::startHardwareLocked(IOService *provider)
         device->GetProductID() != DWA121_PRODUCT ||
         interface->GetInterfaceNumber() != 0)
         return false;
-    if (!IOService::start(provider)) return false;
+    if (!restarting&&!IOService::start(provider)) return false;
     if (!interface->open(this)) {
         IOLog("DWA121Diagnostic: USB interface busy\n");
-        IOService::stop(provider);
+        if(!restarting)IOService::stop(provider);
         return false;
     }
 
@@ -498,7 +502,7 @@ bool DWA121Diagnostic::startHardwareLocked(IOService *provider)
         IOLog("DWA121Diagnostic: unsupported/inconsistent USB transport speed=%u bulkPackets=%u..%u RX=%u TX=%u; expected Full/64 or High/512\n",
               device->GetSpeed(), minBulkPacket, maxBulkPacket, rxCount, txCount);
         interface->close(this);
-        IOService::stop(provider);
+        if(!restarting)IOService::stop(provider);
         return false;
     }
     IOLog("DWA121Diagnostic: USB link=%u Mb/s bulkPacket=%u\n",
@@ -515,7 +519,7 @@ bool DWA121Diagnostic::startHardwareLocked(IOService *provider)
         interface->close(this);
         IOLog("DWA121Diagnostic: identity failed result=%d stage=%d restore=%d USB=0x%08lx\n",
               result, identity.stage, identity.restore_error, (unsigned long)context.firstError);
-        IOService::stop(provider);
+        if(!restarting)IOService::stop(provider);
         return false;
     }
     config = identity.sys_cfg;
@@ -532,7 +536,7 @@ bool DWA121Diagnostic::startHardwareLocked(IOService *provider)
         IOLog("DWA121Diagnostic: firmware failed result=%d stage=%d cleanup=%d bytes=%u USB=0x%08lx\n",
               result, firmwareReport.stage, firmwareReport.cleanup_error,
               firmwareReport.bytes_written, (unsigned long)context.firstError);
-        IOService::stop(provider);
+        if(!restarting)IOService::stop(provider);
         return false;
     }
     IOLog("DWA121Diagnostic: firmware ready version=%u.%u bytes=%u pages=%u MCUFWDL=0x%08lx\n",
@@ -550,7 +554,7 @@ bool DWA121Diagnostic::startHardwareLocked(IOService *provider)
               (unsigned long)radioReport.rf_channel_before, (unsigned long)radioReport.rf_channel_after,
               radioReport.iq_runs, radioReport.last_iq.valid, radioReport.last_iq.tx[0],
               radioReport.last_iq.tx[1], radioReport.last_iq.rx[0], radioReport.last_iq.rx[1]);
-        IOService::stop(provider);
+        if(!restarting)IOService::stop(provider);
         return false;
     }
     IOLog("DWA121Diagnostic: radio calibrated IQ runs=%u TX=%x,%x RX=%x,%x LC=0x%lx BB=0x%lx\n",
@@ -628,7 +632,7 @@ bool DWA121Diagnostic::startHardwareLocked(IOService *provider)
         if (result!=RTL_OK) {
             if (saved) IOFree(saved,sizeof(*saved));
             rtl8188cu_rx_disable(&bus); rtl8188cu_radio_quiesce(&bus);
-            interface->close(this); IOService::stop(provider); return false;
+            interface->close(this); if(!restarting)IOService::stop(provider); return false;
         }
         *saved=context; saved->device->retain();
         liveContext=saved; liveBus=bus; liveBus.cookie=saved;
@@ -690,7 +694,7 @@ bool DWA121Diagnostic::startHardwareLocked(IOService *provider)
     if (result != RTL_OK || rxStop != RTL_OK) {
         rtl8188cu_radio_quiesce(&bus);
         interface->close(this);
-        IOService::stop(provider);
+        if(!restarting)IOService::stop(provider);
         return false;
     }
     /* Diagnostic only: stop RF, BB and MCU before releasing USB ownership. */
@@ -698,7 +702,7 @@ bool DWA121Diagnostic::startHardwareLocked(IOService *provider)
     interface->close(this);
     if (result != RTL_OK) {
         IOLog("DWA121Diagnostic: firmware quiesce failed USB=0x%08lx\n", (unsigned long)context.firstError);
-        IOService::stop(provider);
+        if(!restarting)IOService::stop(provider);
         return false;
     }
     }
@@ -782,9 +786,9 @@ bool DWA121Diagnostic::startHardwareLocked(IOService *provider)
     IOLog("DWA121Diagnostic: RTL8188CU SYS_CFG=0x%08lx; persistent=%d; WPA2 network opt-in\n",
           (unsigned long)config,persistent);
     if (usbTerminating || isInactive() || (persistent && !liveRX->begin())) {
-        stopLiveLocked(); IOService::stop(provider); return false;
+        stopLiveLocked(); if(!restarting)IOService::stop(provider); return false;
     }
-    registerService();
+    if(!restarting)registerService();
     return true;
 }
 
@@ -859,6 +863,11 @@ void DWA121Diagnostic::scanStep(OSObject *object,IOTimerEventSource *)
 IOReturn DWA121Diagnostic::callPlatformFunction(const OSSymbol *name,bool wait,
                                                void *p1,void *p2,void *p3,void *p4)
 {
+    if(name&&(name->isEqualTo(DWA_AIRPORT_RESERVE)||name->isEqualTo(DWA_AIRPORT_PREPARE)||
+       name->isEqualTo(DWA_AIRPORT_CANCEL)||name->isEqualTo(DWA_AIRPORT_STATUS)||name->isEqualTo(DWA_AIRPORT_RECOVER))){
+        if(p3||p4)return kIOReturnBadArgument;
+        return airportPlatform(name,p1,p2);
+    }
     bool start=name&&name->isEqualTo(DWA_SCAN_START);
     bool copy=name&&name->isEqualTo(DWA_SCAN_COPY);
     if(!start&&!copy)return IOService::callPlatformFunction(name,wait,p1,p2,p3,p4);
@@ -868,7 +877,7 @@ IOReturn DWA121Diagnostic::callPlatformFunction(const OSSymbol *name,bool wait,
     IOReturn result=kIOReturnNotReady;
     if(!usbTerminating&&!isInactive()&&liveRX&&getProperty("RadioRunning")==kOSBooleanTrue){
         if(start){
-            if(controlOwner||liveTX){result=kIOReturnBusy;setProperty("PassiveScanDeniedOwner",true);}
+            if(controlOwner||liveTX||airportReserved){result=kIOReturnBusy;setProperty("PassiveScanDeniedOwner",true);}
             else if(scanActive||(scanValid&&(rtl_u32)(scanNow()-scanCompleted)<2000)){
                 *(rtl_u32 *)p1=scanGeneration;result=kIOReturnSuccess;
             } else {

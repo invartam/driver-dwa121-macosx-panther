@@ -7,6 +7,7 @@
 #include "../control/association.h"
 #include "../control/wpa.h"
 #include "../control/network.h"
+#include "../control/airport_protocol.h"
 #include "../net80211/scan.h"
 #include "../rtl8188cu/rx.h"
 class PantherTXEngine;
@@ -25,6 +26,10 @@ class DWA121Diagnostic : public IOService {
     IOUSBPipe *liveRXPipe;
     IOTimerEventSource *scanTimer;
     bool scanTimerAdded,scanActive,scanValid;
+    dwa_airport_target airportTargetState;
+    rtl_u32 airportSequence;
+    bool airportReserved;
+    IOReturn airportPlatform(const OSSymbol *,void *,void *);
     unsigned int scanChannel,scanHome;
     rtl_u32 scanGeneration,scanCompleted;
     rtl_bss_table *scanTable,*scanScratch;
@@ -57,7 +62,7 @@ class DWA121Diagnostic : public IOService {
     bool stopLiveLocked();
     bool stopLive();
     volatile bool usbTerminating;
-    bool startHardwareLocked(IOService *provider);
+    bool startHardwareLocked(IOService *provider,bool restarting=false);
 public:
     virtual bool init(OSDictionary *dictionary = 0);
     virtual IOWorkLoop *getWorkLoop() const;
@@ -69,7 +74,8 @@ public:
     virtual IOReturn callPlatformFunction(const OSSymbol *,bool,void *,void *,void *,void *);
     virtual IOReturn setProperties(OSObject *properties);
     virtual IOReturn newUserClient(task_t,void *,UInt32,IOUserClient **);
-    IOReturn claimControl(DWA121ControlClient *);
+    IOReturn claimControl(DWA121ControlClient *,bool native=false);
+    IOReturn airportTarget(DWA121ControlClient *,dwa_airport_target *);
     void releaseControl(DWA121ControlClient *);
     IOReturn controlCommand(DWA121ControlClient *,const dwa_control_request *,dwa_control_reply *);
     IOReturn associationCommand(DWA121ControlClient *,const dwa_assoc_request *,dwa_assoc_reply *);

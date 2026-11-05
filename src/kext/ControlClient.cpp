@@ -7,7 +7,8 @@ OSDefineMetaClassAndStructors(DWA121ControlClient,IOUserClient)
 bool DWA121ControlClient::initWithTask(task_t task,void *security,UInt32 type)
 {
     driver=0; bzero(&method,sizeof(method));
-    if (type!=DWA_CONTROL_TYPE || clientHasPrivilege(task,kIOClientPrivilegeAdministrator)!=kIOReturnSuccess)
+    nativeOwner=type==DWA_AIRPORT_OWNER_TYPE;
+    if ((!nativeOwner&&type!=DWA_CONTROL_TYPE) || clientHasPrivilege(task,kIOClientPrivilegeAdministrator)!=kIOReturnSuccess)
         return false;
     if (!IOUserClient::initWithTask(task,security,type)) return false;
     method.object=this; method.func=(IOMethod)&DWA121ControlClient::command;
@@ -25,13 +26,16 @@ bool DWA121ControlClient::initWithTask(task_t task,void *security,UInt32 type)
     networkMethod.func=(IOMethod)&DWA121ControlClient::network;
     networkMethod.flags=kIOUCStructIStructO;
     networkMethod.count0=sizeof(dwa_net_request);networkMethod.count1=sizeof(dwa_net_reply);
+    bzero(&airportMethod,sizeof(airportMethod));airportMethod.object=this;
+    airportMethod.func=(IOMethod)&DWA121ControlClient::airport;airportMethod.flags=kIOUCStructIStructO;
+    airportMethod.count0=sizeof(rtl_u32);airportMethod.count1=sizeof(dwa_airport_target);
     return true;
 }
 bool DWA121ControlClient::start(IOService *provider)
 {
     DWA121Diagnostic *d=OSDynamicCast(DWA121Diagnostic,provider);
     if (!d || !IOUserClient::start(provider)) return false;
-    if (d->claimControl(this)!=kIOReturnSuccess) { IOUserClient::stop(provider); return false; }
+    if (d->claimControl(this,nativeOwner)!=kIOReturnSuccess) { IOUserClient::stop(provider); return false; }
     driver=d; driver->retain(); return true;
 }
 IOReturn DWA121ControlClient::clientClose()
@@ -52,8 +56,17 @@ void DWA121ControlClient::free()
 }
 IOExternalMethod *DWA121ControlClient::getTargetAndMethodForIndex(IOService **target,UInt32 index)
 {
-    if (index>3 || !target) return 0;
+    if (index>4 || !target || (index==4&&!nativeOwner)) return 0;
+    if(index==4){*target=this;return &airportMethod;}
     *target=this; return index==3?&networkMethod:(index==2?&wpaMethod:(index?&associationMethod:&method));
+}
+IOReturn DWA121ControlClient::airport(void *in,void *out,IOByteCount n,IOByteCount *size)
+{
+    if(!in||!out||!size||n!=sizeof(rtl_u32)||*size!=sizeof(dwa_airport_target)||
+       *(rtl_u32 *)in!=DWA_AIRPORT_VERSION)return kIOReturnBadArgument;
+    bzero(out,sizeof(dwa_airport_target));
+    if(clientHasPrivilege(current_task(),kIOClientPrivilegeAdministrator)!=kIOReturnSuccess)return kIOReturnNotPrivileged;
+    return driver?driver->airportTarget(this,(dwa_airport_target *)out):kIOReturnNotAttached;
 }
 IOReturn DWA121ControlClient::network(void *input,void *output,IOByteCount inSize,IOByteCount *outSize)
 {

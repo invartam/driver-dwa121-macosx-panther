@@ -69,3 +69,5 @@ cc -std=c89 -D_DARWIN_C_SOURCE -Wall -Wextra -Werror -fsanitize=address,undefine
 
 cc -std=c89 -pedantic -Wall -Wextra -Werror -fsanitize=address,undefined -g src/net80211/scan.c tests/scan_test.c -o artifacts/scan-test-host
 ./artifacts/scan-test-host
+cc -std=c89 -pedantic -Wall -Wextra -Werror -fsanitize=address,undefined -g src/control/airport_join.c src/net80211/beacon.c tests/airport_join_test.c -o artifacts/airport-join-test-host
+./artifacts/airport-join-test-host

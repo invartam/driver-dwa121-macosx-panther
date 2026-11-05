@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "../control/association.h"
+#include "../control/airport_protocol.h"
 #include "../net80211/station.h"
 #include "../net80211/eapol.h"
 #include "../usb/tx_lifecycle.h"
@@ -74,12 +75,25 @@ int main(int argc,char **argv)
     io_iterator_t it=0; io_service_t service=0; unsigned int start,deadline,j,cck1,age=0;
     unsigned int management=0,eapol=0,m1=0,other=0,rejected=0,ssid_n;
     int require_m1=0;
+    int native=0;unsigned int nativeGeneration=0;struct dwa_airport_target nativeTarget;
+    memset(&nativeTarget,0,sizeof(nativeTarget));
     int found=0,ok=0,begun=0,stopped=0,action,guard=0,guard_ok=0;
 #ifdef DWA_WPA2_PROBE
     int wpa_ok=0,check_pmk=0,configured=0;
 #ifdef DWA_NETWORK_BUILD
     char configured_ssid[33];struct dwa_config config;
     if(geteuid()!=0){fprintf(stderr,"Run dwa121-connect with sudo.\n");return 1;}
+    if(argc==4&&!strcmp(argv[1],"--airport")){
+        char *end=0;unsigned long generation=strtoul(argv[2],&end,10);unsigned int k,len=(unsigned int)strlen(argv[3]);
+        if(!end||*end||!generation||generation>0xffffffffUL||!len||(len&1)||len>62)return 1;
+        for(k=0;k<len;k+=2){unsigned int a,b;char x=argv[3][k],y=argv[3][k+1];
+            a=x>='0'&&x<='9'?x-'0':(x>='a'&&x<='f'?x-'a'+10:16);
+            b=y>='0'&&y<='9'?y-'0':(y>='a'&&y<='f'?y-'a'+10:16);
+            if(a>15||b>15||!(a*16+b))return 1;configured_ssid[k/2]=(char)(a*16+b);
+        }
+        configured_ssid[len/2]=0;native=1;nativeGeneration=(unsigned int)generation;
+        argv[1]=configured_ssid;argc=2;
+    }
     if(argc==3&&!strcmp(argv[1],"--config")){
         struct rlimit limit;limit.rlim_cur=limit.rlim_max=0;
         if(setrlimit(RLIMIT_CORE,&limit)||!dwa_config_read(argv[2],&config)){fprintf(stderr,"Configuration absente ou non protegee (root, 0600).\n");return 1;}
@@ -133,18 +147,29 @@ int main(int argc,char **argv)
     do {
         if(IOServiceGetMatchingServices(kIOMasterPortDefault,IOServiceMatching("DWA121Diagnostic"),&it)!=KERN_SUCCESS)goto done;
         service=IOIteratorNext(it);IOObjectRelease(it);
-        if(service&&IOServiceOpen(service,mach_task_self(),DWA_CONTROL_TYPE,&connection)==KERN_SUCCESS)break;
+        if(service&&IOServiceOpen(service,mach_task_self(),native?DWA_AIRPORT_OWNER_TYPE:DWA_CONTROL_TYPE,&connection)==KERN_SUCCESS)break;
         if(service){IOObjectRelease(service);service=0;}connection=0;
 #ifdef DWA_NETWORK_BUILD
         if((unsigned int)(now_ms()-start)<20000){usleep(250000);continue;}
 #endif
         fprintf(stderr,"Control open rejected\n");goto done;
     }while(1);
+    if(native){
+        rtl_u32 version=DWA_AIRPORT_VERSION;IOByteCount bytes=sizeof(nativeTarget);
+        if(IOConnectMethodStructureIStructureO(connection,4,sizeof(version),&bytes,&version,&nativeTarget)!=KERN_SUCCESS||
+           bytes!=sizeof(nativeTarget)||nativeTarget.version!=DWA_AIRPORT_VERSION||nativeTarget.generation!=nativeGeneration||
+           nativeTarget.ssid_length!=ssid_n||memcmp(nativeTarget.ssid,argv[1],ssid_n)){
+            fprintf(stderr,"Native target/session mismatch\n");goto done;
+        }
+        printf("AirPort session=%u channel=%lu BSSID=%02x:%02x:%02x:%02x:%02x:%02x; credentials=native-input\n",
+            nativeGeneration,(unsigned long)nativeTarget.channel,nativeTarget.bssid[0],nativeTarget.bssid[1],nativeTarget.bssid[2],nativeTarget.bssid[3],nativeTarget.bssid[4],nativeTarget.bssid[5]);fflush(stdout);
+    }
     start=now_ms();
     while((unsigned int)(now_ms()-start)<10000) {
         if(!receive(DWA_CONTROL_NEXT,0)) goto done;
         if(!(rx.flags&DWA_CONTROL_FRAME)) { usleep(5000); continue; }
         if(rx.frame.kind!=DWA_FRAME_BEACON) continue;
+        if(native&&(rx.channel!=nativeTarget.channel||rx.frame.length<24||memcmp(rx.frame.data+16,nativeTarget.bssid,6)))continue;
         if(rtl_station_begin(&station,rx.mac,rx.frame.data,rx.frame.length,
             (const rtl_u8 *)argv[1],ssid_n,rx.channel,rx.age_ms)!=1) continue;
         cck1=0; for(j=0;j<station.rate_count;++j) if((station.rates[j]&127)==2) cck1=1;

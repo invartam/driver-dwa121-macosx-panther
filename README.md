@@ -8,18 +8,23 @@ Télécharger le fichier `DWA121-0.15.0-Panther-PPC.tgz` de la [release v0.15.0]
 
 La clé dérivée est conservée dans `/Library/Application Support/DWA121/network.conf` sous root avec les permissions 0600. Ce fichier est un secret : ne pas le joindre aux rapports de diagnostic. Le paquet ne contient aucune configuration Wi-Fi personnelle.
 
-## Prototype AirPort P0.3.1 (branche v1)
+## Prototype AirPort P0.3.2 (branche v1)
 
-Cette branche ajoute un scan passif réel des canaux 1 à 11 et l'affichage des SSID
-dans le menu AirPort natif de Panther. Prototype validé en VM avec la vraie clé ;
-association native, RSSI et validation PowerBook USB 1.1 restent ouverts.
-Le scan est refusé pendant une connexion WPA2. Un correctif de l'horloge Mach du
-supplicant évite aussi un débordement sur Panther PPC. Ces modifications ne sont
-pas incluses dans le paquet v0.15.0 ci-dessus.
+Cette branche permet le scan passif des canaux 1 à 11 puis la sélection d’un
+réseau WPA2-PSK/AES depuis le menu AirPort natif de Panther. La fenêtre WEP
+transporte une vraie saisie WPA2 avec la convention `<mot-de-passe>` ; laisser
+**Add to Keychain décoché**. Aucun profil enregistré ne remplace cette saisie.
+Le prototype est validé en VM avec la vraie clé : WPA2, DHCP, DNS, 30/30 pings
+et 256 Kio TCP dans chaque sens.
 
-Voir l'[architecture](docs/airport-p031-architecture.md) et les
-[tests, preuve visuelle et restauration](docs/airport-p031-tests.md). Le compagnon
-et le cœur expérimental se chargent séparément, sans remplacer la référence.
+Le scan reste refusé pendant une connexion ; le menu n’affiche pas encore le
+SSID courant avec une coche. RSSI, trousseau et validation PowerBook USB 1.1
+restent ouverts. Le correctif d’horloge Mach du supplicant de P0.3.1 est conservé.
+Ces modifications ne sont pas incluses dans le paquet v0.15.0 ci-dessus.
+
+Voir l’[architecture](docs/airport-p032-architecture.md) et les
+[tests et restauration](docs/airport-p032-tests.md). Le compagnon et le cœur
+expérimental se chargent séparément, sans remplacer la référence.
 
 ## Portée du MVP v0.15.0
 

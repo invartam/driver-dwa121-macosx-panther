@@ -4,24 +4,45 @@
 #include <IOKit/IOUserClient.h>
 #include <IOKit/IOLib.h>
 #include <IOKit/IOLocks.h>
+#include <IOKit/IOWorkLoop.h>
+#include <IOKit/IOTimerEventSource.h>
+#include <kern/task.h>
 #include <libkern/c++/OSBoolean.h>
 #include <libkern/c++/OSData.h>
 #include <libkern/c++/OSString.h>
 #include <kern/clock.h>
 #include "../net80211/scan.h"
+#include "../control/airport_protocol.h"
 extern "C" {
 #include <sys/proc.h>
 #include <sys/vm.h>
 }
 
+static rtl_u32 nativeScanNow();
+static void secretWipe(void *v,unsigned int n)
+{volatile unsigned char *p=(volatile unsigned char *)v;while(n--)*p++=0;}
 class AirPortDWA121 : public IOService {
     OSDeclareDefaultStructors(AirPortDWA121)
     IOService *hardware,*controller;
     OSObject *originalClass;
     IOLock *lock;
     void detachHardware();
+    IOWorkLoop *loop;
+    IOTimerEventSource *timer;
+    void *broker;
+    rtl_u32 brokerPulse;
+    dwa_airport_reply pending;
+    bool cancelPending,recovering;
+    static void tick(OSObject *,IOTimerEventSource *);
+    IOReturn core(const char *,void *,dwa_airport_target *);
 public:
     virtual bool init(OSDictionary * = 0);
+    virtual IOWorkLoop *getWorkLoop() const {return loop;}
+    IOReturn brokerOpen(void *);
+    void brokerClose(void *);
+    IOReturn brokerCommand(void *,const dwa_airport_request *,dwa_airport_reply *);
+    IOReturn select(const dwa_join_selection *,const unsigned char *,unsigned int,rtl_u32 *);
+    IOReturn waitJoin(rtl_u32);
     virtual void free();
     virtual bool start(IOService *provider);
     virtual void stop(IOService *provider);
@@ -40,7 +61,14 @@ class DWA121AirPortClient : public IOUserClient {
     rtl_u32 generation,snapshotTime;
     unsigned char requested[33];
     unsigned int requestedLength;
-    bool snapshotReady;
+    bool snapshotReady,isBroker;
+    unsigned char secret[64];
+    unsigned int secretLength;
+    rtl_u32 secretTime;
+    IOTimerEventSource *secretTimer;
+    bool secretTimerAdded;
+    static void expireSecret(OSObject *,IOTimerEventSource *);
+    IOReturn secretCommand(unsigned int,void *,IOByteCount,rtl_u32 *);
     IOReturn scanCommand(unsigned int,void *,void *);
     IOReturn command(void *,void *,IOByteCount,IOByteCount *);
 public:
@@ -55,12 +83,17 @@ OSDefineMetaClassAndStructors(AirPortDWA121,IOService)
 OSDefineMetaClassAndStructors(DWA121AirPortClient,IOUserClient)
 bool AirPortDWA121::init(OSDictionary *p)
 {
-    hardware=controller=0;originalClass=0;lock=0;
+    hardware=controller=0;originalClass=0;lock=0;loop=0;timer=0;broker=0;
+    brokerPulse=0;cancelPending=recovering=false;bzero(&pending,sizeof(pending));
     if(!IOService::init(p))return false;
-    lock=IOLockAlloc();return lock!=0;
+    lock=IOLockAlloc();loop=IOWorkLoop::workLoop();
+    if(!lock||!loop)return false;
+    timer=IOTimerEventSource::timerEventSource(this,tick);
+    return timer&&loop->addEventSource(timer)==kIOReturnSuccess;
 }
 void AirPortDWA121::free()
-{ detachHardware();if(lock)IOLockFree(lock);IOService::free(); }
+{ detachHardware();if(timer){timer->cancelTimeout();if(loop)loop->removeEventSource(timer);timer->release();}
+  if(loop)loop->release();secretWipe(&pending,sizeof(pending));if(lock)IOLockFree(lock);IOService::free(); }
 bool AirPortDWA121::start(IOService *provider)
 {
     if(!provider||!provider->metaCast("DWA121NetworkInterface"))return false;
@@ -73,9 +106,10 @@ bool AirPortDWA121::start(IOService *provider)
      * not its C++ metaclass. Publish our actual compatibility facade's name.
      * The original controller and all packet methods remain untouched. */
     if(!controller->setProperty("IOClass","AirPortDWA121"))return false;
-    setProperty("P02ReadOnly",true);
+    setProperty("P02ReadOnly",false);
+    timer->setTimeoutMS(250);
     setProperty("P031RSSIAvailable",false);
-    setProperty("P02Protocol","Panther status 13,18 / passive scan 8,9");
+    setProperty("P02Protocol","Panther status 13,18 / scan 8,9 / WPA2 selection 26,17");
     registerService();return true;
 }
 void AirPortDWA121::detachHardware()
@@ -89,7 +123,7 @@ void AirPortDWA121::detachHardware()
     if(name&&name->isEqualTo("AirPortDWA121")&&oldClass)
         controller->setProperty("IOClass",oldClass);
     if(value)value->release();
-    hardware=controller=0;originalClass=0;
+    hardware=controller=0;originalClass=0;broker=0;cancelPending=false;secretWipe(&pending,sizeof(pending));
     IOLockUnlock(lock);
     /* UI clients may outlive USB termination. Never pin the USB kext until
      * those stale handles close; calls now fail without touching providers. */
@@ -130,14 +164,21 @@ IOReturn AirPortDWA121::readStatus(void *out,IOByteCount *size)
     ((unsigned char *)out)[5]=1;
     bcopy(mac->getBytesNoCopy(),(unsigned char *)out+40,6);
     value->release();*size=56;
-    IOLog("DWA121 AirPort P02: command=18 status=unknown MAC=provider result=success\n");
+    dwa_airport_target target;bzero(&target,sizeof(target));
+    IOLockLock(lock);IOReturn state=core(DWA_AIRPORT_STATUS,0,&target);IOLockUnlock(lock);
+    if(state==kIOReturnSuccess){
+        unsigned char *p=(unsigned char *)out;
+        if(target.phase==DWA_AP_CONNECTED&&target.ssid_length<32){
+            bcopy(target.ssid,p+6,target.ssid_length);bcopy(target.bssid,p+46,6);p[55]=1;
+        }else if(target.phase==DWA_AP_FAILED||target.phase==DWA_AP_DISCONNECTED)p[55]=4;
+    }
     return kIOReturnSuccess;
 }
 IOReturn AirPortDWA121::newUserClient(task_t task,void *security,UInt32 type,IOUserClient **out)
 {
     if(!out)return kIOReturnBadArgument;
     *out=0;
-    if(type!=12)return kIOReturnUnsupported;
+    if(type!=12&&type!=DWA_AIRPORT_BROKER_TYPE)return kIOReturnUnsupported;
     if(isInactive())return kIOReturnNotAttached;
     DWA121AirPortClient *c=new DWA121AirPortClient;
     if(!c)return kIOReturnNoMemory;
@@ -150,7 +191,9 @@ bool DWA121AirPortClient::initWithTask(task_t task,void *security,UInt32 type)
 {
     radio=0;scanLock=0;snapshot=0;generation=snapshotTime=0;snapshotReady=false;
     requestedLength=0;bzero(requested,sizeof(requested));bzero(&method,sizeof(method));
-    if(type!=12||!IOUserClient::initWithTask(task,security,type))return false;
+    isBroker=type==DWA_AIRPORT_BROKER_TYPE;secretLength=0;secretTime=0;secretTimer=0;secretTimerAdded=false;bzero(secret,sizeof(secret));
+    if((type!=12&&!isBroker)||(isBroker&&clientHasPrivilege(task,kIOClientPrivilegeAdministrator)!=kIOReturnSuccess)||
+       !IOUserClient::initWithTask(task,security,type))return false;
     method.object=this;method.func=(IOMethod)&DWA121AirPortClient::command;
     method.flags=kIOUCStructIStructO;method.count0=0xffffffffU;
     /* Nonzero sentinel preserves four-argument dispatch for zero-length output.
@@ -164,22 +207,37 @@ bool DWA121AirPortClient::start(IOService *p)
 {
     AirPortDWA121 *r=OSDynamicCast(AirPortDWA121,p);
     if(!r||!IOUserClient::start(p))return false;
-    radio=r;radio->retain();return true;
+    radio=r;radio->retain();
+    if(isBroker)return radio->brokerOpen(this)==kIOReturnSuccess;
+    secretTimer=IOTimerEventSource::timerEventSource(this,expireSecret);
+    if(!secretTimer||radio->getWorkLoop()->addEventSource(secretTimer)!=kIOReturnSuccess)return false;
+    secretTimerAdded=true;return true;
 }
 void DWA121AirPortClient::free()
 {
+    if(isBroker&&radio)radio->brokerClose(this);
+    if(secretTimer){secretTimer->cancelTimeout();if(secretTimerAdded&&radio)radio->getWorkLoop()->removeEventSource(secretTimer);secretTimer->release();}
+    secretWipe(secret,sizeof(secret));
     if(snapshot)IOFree(snapshot,sizeof(*snapshot));
     if(scanLock)IOLockFree(scanLock);
     if(radio){radio->release();radio=0;}IOUserClient::free();
 }
 IOReturn DWA121AirPortClient::clientClose()
-{ terminate();return kIOReturnSuccess; }
+{ if(isBroker&&radio)radio->brokerClose(this);
+  IOLockLock(scanLock);secretWipe(secret,sizeof(secret));secretLength=0;if(secretTimer)secretTimer->cancelTimeout();IOLockUnlock(scanLock);
+  terminate();return kIOReturnSuccess; }
 IOReturn DWA121AirPortClient::clientDied() { return clientClose(); }
 IOExternalMethod *DWA121AirPortClient::getTargetAndMethodForIndex(IOService **target,UInt32 index)
 { if(!target||index!=0)return 0;*target=this;return &method; }
 IOReturn DWA121AirPortClient::command(void *in,void *out,IOByteCount n,IOByteCount *outSize)
 {
     if(!in||!outSize||n<1)return kIOReturnBadArgument;
+    if(isBroker){
+        if(n!=sizeof(dwa_airport_request)||*outSize!=sizeof(dwa_airport_reply)||!out)return kIOReturnBadArgument;
+        bzero(out,sizeof(dwa_airport_reply));
+        if(clientHasPrivilege(current_task(),kIOClientPrivilegeAdministrator)!=kIOReturnSuccess)return kIOReturnNotPrivileged;
+        return radio?radio->brokerCommand(this,(const dwa_airport_request *)in,(dwa_airport_reply *)out):kIOReturnNotAttached;
+    }
     struct proc *caller=current_proc();
     if(*(unsigned char *)in!=9&&*(unsigned char *)in!=13)
     IOLog("DWA121 AirPort P02: caller=%s pid=%d op=%u in=%lu out=%lu\n",
@@ -187,6 +245,16 @@ IOReturn DWA121AirPortClient::command(void *in,void *out,IOByteCount n,IOByteCou
         (unsigned int)*(unsigned char *)in,(unsigned long)n,(unsigned long)*outSize);
     if(isInactive()||!radio)return kIOReturnNotAttached;
     unsigned int op=*(unsigned char *)in;
+    if(op==17||op==26){
+        if(*outSize!=0)return kIOReturnBadArgument;
+        IOLockLock(scanLock);
+        rtl_u32 joinGeneration=0;
+        IOReturn r=secretCommand(op,(unsigned char *)in+1,n-1,&joinGeneration);
+        IOLockUnlock(scanLock);
+        if(op==26)secretWipe(in,n);
+        if(r==kIOReturnSuccess&&joinGeneration)r=radio->waitJoin(joinGeneration);
+        return r;
+    }
     if(op==8||op==9){
         if((op==8&&(n!=34||*outSize!=0))||
            (op==9&&(n!=5||*outSize!=50||!out)))return kIOReturnBadArgument;
@@ -265,4 +333,139 @@ IOReturn DWA121AirPortClient::scanCommand(unsigned int op,void *in,void *out)
     IOLog("DWA121 AirPort scan: end generation=%lu native=%u BSSID=%u\n",
         (unsigned long)generation,n,snapshot->count);
     return (IOReturn)0x20000109;
+}
+
+IOReturn AirPortDWA121::core(const char *name,void *in,dwa_airport_target *out)
+{
+    if(!hardware||hardware->isInactive()||isInactive())return kIOReturnNotAttached;
+    return hardware->callPlatformFunction(name,false,in,out,0,0);
+}
+IOReturn AirPortDWA121::brokerOpen(void *owner)
+{
+    IOLockLock(lock);IOReturn r=kIOReturnExclusiveAccess;
+    if(!broker&&!cancelPending){broker=owner;brokerPulse=nativeScanNow();r=kIOReturnSuccess;}
+    IOLockUnlock(lock);return r;
+}
+void AirPortDWA121::brokerClose(void *owner)
+{
+    IOLockLock(lock);
+    if(broker==owner){broker=0;secretWipe(pending.secret,sizeof(pending.secret));pending.secret_length=0;
+        if(pending.target.generation)cancelPending=true;}
+    IOLockUnlock(lock);
+}
+void AirPortDWA121::tick(OSObject *owner,IOTimerEventSource *sender)
+{
+    AirPortDWA121 *r=(AirPortDWA121 *)owner;
+    IOLockLock(r->lock);
+    if(r->broker&&!r->recovering&&(rtl_u32)(nativeScanNow()-r->brokerPulse)>5000){
+        r->broker=0;secretWipe(r->pending.secret,sizeof(r->pending.secret));r->pending.secret_length=0;
+        if(r->pending.target.generation)r->cancelPending=true;
+    }
+    if(r->cancelPending){
+        dwa_airport_target out;bzero(&out,sizeof(out));
+        IOReturn result=r->core(DWA_AIRPORT_CANCEL,&r->pending.target.generation,&out);
+        if(result!=kIOReturnBusy){r->cancelPending=false;r->pending.target=out;}
+    }
+    IOLockUnlock(r->lock);if(!r->isInactive())sender->setTimeoutMS(250);
+}
+IOReturn AirPortDWA121::select(const dwa_join_selection *s,const unsigned char *secret,unsigned int length,rtl_u32 *generation)
+{
+    if(!IOLockTryLock(lock))return kIOReturnBusy;
+    IOReturn result=kIOReturnNotReady;
+    do {
+        if(s->operation==DWA_JOIN_DISCONNECT){
+            secretWipe(pending.secret,sizeof(pending.secret));pending.secret_length=0;
+            if(pending.target.generation)cancelPending=true;
+            result=kIOReturnSuccess;break;
+        }
+        if(!broker||recovering||cancelPending||(rtl_u32)(nativeScanNow()-brokerPulse)>5000)break;
+        if(s->legacy_prompt!=2||length<8||length>63){result=kIOReturnUnsupported;break;}
+        dwa_airport_target target;bzero(&target,sizeof(target));
+        result=core(DWA_AIRPORT_RESERVE,(void *)s,&target);
+        if(result!=kIOReturnSuccess)break;
+        secretWipe(&pending,sizeof(pending));pending.target=target;
+        pending.secret_length=length;bcopy(secret,pending.secret,length);*generation=target.generation;
+        IOLog("DWA121 AirPort: native selection accepted session=%lu SSIDLength=%u\n",
+              (unsigned long)target.generation,s->ssid_length);
+    }while(false);
+    IOLockUnlock(lock);return result;
+}
+IOReturn AirPortDWA121::brokerCommand(void *owner,const dwa_airport_request *request,dwa_airport_reply *out)
+{
+    if(request->version!=DWA_AIRPORT_VERSION||request->reserved||request->operation<1||request->operation>4)return kIOReturnBadArgument;
+    IOLockLock(lock);IOReturn result=kIOReturnNotPermitted;
+    do {
+        if(broker!=owner)break;
+        brokerPulse=nativeScanNow();
+        if(request->operation==DWA_AP_RECOVER){
+            if(pending.secret_length||cancelPending){result=kIOReturnBusy;break;}
+            IOService *h=hardware;if(!h){result=kIOReturnNotAttached;break;}
+            h->retain();recovering=true;IOLockUnlock(lock);
+            result=h->callPlatformFunction(DWA_AIRPORT_RECOVER,false,0,&out->target,0,0);h->release();
+            IOLockLock(lock);recovering=false;brokerPulse=nativeScanNow();break;
+        }
+        result=core(DWA_AIRPORT_STATUS,0,&out->target);
+        if(result!=kIOReturnSuccess)break;
+        if(request->operation==DWA_AP_POLL)break;
+        if(request->generation!=pending.target.generation||request->generation!=out->target.generation){result=kIOReturnNotReady;break;}
+        if(request->operation==DWA_AP_CANCEL){
+            secretWipe(pending.secret,sizeof(pending.secret));pending.secret_length=0;
+            cancelPending=true;result=kIOReturnSuccess;break;
+        }
+        if(cancelPending||!pending.secret_length||out->target.phase!=DWA_AP_REQUESTED){result=kIOReturnNotReady;break;}
+        result=core(DWA_AIRPORT_PREPARE,&pending.target.generation,&out->target);
+        if(result!=kIOReturnSuccess){secretWipe(pending.secret,sizeof(pending.secret));pending.secret_length=0;cancelPending=true;break;}
+        out->secret_length=pending.secret_length;bcopy(pending.secret,out->secret,pending.secret_length);
+        secretWipe(pending.secret,sizeof(pending.secret));pending.secret_length=0;pending.target=out->target;
+    }while(false);
+    IOLockUnlock(lock);return result;
+}
+void DWA121AirPortClient::expireSecret(OSObject *owner,IOTimerEventSource *)
+{
+    DWA121AirPortClient *c=(DWA121AirPortClient *)owner;
+    IOLockLock(c->scanLock);secretWipe(c->secret,sizeof(c->secret));c->secretLength=0;IOLockUnlock(c->scanLock);
+}
+IOReturn DWA121AirPortClient::secretCommand(unsigned int op,void *input,IOByteCount n,rtl_u32 *generation)
+{
+    const unsigned char *p=(const unsigned char *)input;
+    if(op==26){
+        secretWipe(secret,sizeof(secret));secretLength=0;secretTimer->cancelTimeout();
+        if(n<9||n>64||p[n-1])return kIOReturnBadArgument;
+        for(unsigned int i=0;i<n-1;++i)if(p[i]<32||p[i]>126)return kIOReturnBadArgument;
+        bcopy(p,secret,n-1);secretLength=n-1;secretTime=nativeScanNow();
+        IOReturn r=secretTimer->setTimeoutMS(10000);
+        if(r!=kIOReturnSuccess){secretWipe(secret,sizeof(secret));secretLength=0;}
+        return r;
+    }
+    dwa_join_selection selection;IOReturn result=kIOReturnBadArgument;
+    if((rtl_u32)(nativeScanNow()-secretTime)>=10000){secretWipe(secret,sizeof(secret));secretLength=0;}
+    if(dwa_join_parse(p,(unsigned int)n,&selection)){
+        result=selection.operation==DWA_JOIN_DISCONNECT||selection.legacy_prompt==2?
+            radio->select(&selection,secret,secretLength,generation):kIOReturnUnsupported;
+    }
+    secretWipe(secret,sizeof(secret));secretLength=0;secretTimer->cancelTimeout();
+    return result;
+}
+
+/* ClientController joinWEP: dispatches threadedWirelessJoinWEP: on NSThread.
+ * The native framework otherwise waits only 20 x 100 ms, too short for WPA2.
+ * Wait on that calling thread, never a workloop and never with any lock held.
+ * Failure/cancel completes too; command 18 carries the actual native result. */
+IOReturn AirPortDWA121::waitJoin(rtl_u32 generation)
+{
+    rtl_u32 start=nativeScanNow();
+    while((rtl_u32)(nativeScanNow()-start)<15000){
+        dwa_airport_target target;bzero(&target,sizeof(target));
+        IOLockLock(lock);IOReturn r=core(DWA_AIRPORT_STATUS,0,&target);IOLockUnlock(lock);
+        if(r==kIOReturnSuccess){
+            if(target.generation!=generation)return kIOReturnNotReady;
+            if(target.phase==DWA_AP_CONNECTED||target.phase==DWA_AP_FAILED||target.phase==DWA_AP_DISCONNECTED)return kIOReturnSuccess;
+        }else if(r!=kIOReturnBusy)return r;
+        IOSleep(50);
+    }
+    IOLockLock(lock);
+    if(pending.target.generation==generation){
+        secretWipe(pending.secret,sizeof(pending.secret));pending.secret_length=0;cancelPending=true;
+    }
+    IOLockUnlock(lock);return kIOReturnTimeout;
 }
