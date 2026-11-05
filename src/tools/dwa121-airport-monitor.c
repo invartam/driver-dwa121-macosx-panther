@@ -1,7 +1,7 @@
 /* Panther's Apple80211Monitor matches only Apple's exact driver classes.
  * Publish the verified native state/notifications for our compatibility facade.
  * Foreground process; state key is session-owned and removed even on death.
- * No keys, scan results, link association or RSSI are manufactured. */
+ * Association comes from the native status snapshot; no keys, scan results or RSSI. */
 #include <SystemConfiguration/SystemConfiguration.h>
 #include <IOKit/IOKitLib.h>
 #include <CoreFoundation/CoreFoundation.h>
@@ -26,14 +26,20 @@ static int appleCard(void)
     if(!s)s=IOServiceGetMatchingService(kIOMasterPortDefault,IOServiceMatching("AirPortPCI"));
     if(s){IOObjectRelease(s);return 1;}return 0;
 }
-static CFStringRef snapshot(int *power)
+static CFStringRef snapshot(int *power,int *link)
 {
     io_service_t s;io_registry_entry_t controller=0,child;io_iterator_t children=0;
-    io_connect_t c=0;CFTypeRef name=0;IOReturn r;unsigned char cmd=13,out=0;IOByteCount n=0;
+    io_connect_t c=0;CFTypeRef name=0;IOReturn r;unsigned char cmd=13,out=0,status[56];IOByteCount n=0;
     s=IOServiceGetMatchingService(kIOMasterPortDefault,IOServiceMatching("AirPortDWA121"));
     if(!s)return 0;
     r=IOServiceOpen(s,mach_task_self(),12,&c);
     if(!r)r=IOConnectMethodStructureIStructureO(c,0,1,&n,&cmd,&out);
+    if(c&&(r==0||r==3)){
+        *power=r==3;cmd=18;n=sizeof(status);
+        if(IOConnectMethodStructureIStructureO(c,0,1,&n,&cmd,status)==KERN_SUCCESS&&n==56)
+            *link=*power&&status[2]==0&&status[3]==4&&status[55]==1?4:0;
+        else *link=0;
+    }
     if(c)IOServiceClose(c);
     if(r!=0&&r!=3){IOObjectRelease(s);return 0;}
     *power=r==3;
@@ -52,22 +58,21 @@ static CFStringRef snapshot(int *power)
     if(name&&CFGetTypeID(name)!=CFStringGetTypeID()){CFRelease(name);name=0;}
     return (CFStringRef)name;
 }
-static CFDictionaryRef state(int power)
+static CFDictionaryRef state(int power,int link)
 {
-    /* Same types as Apple80211Monitor::updateSC. Link Status=0 means that
-     * association status is not implemented by the P0.2 compatibility API. */
-    short p=power,mode=1,unknown=0;CFDictionaryRef d=0;
+    /* Same native types and port status as Apple80211Monitor::updateSC. */
+    short p=power,mode=1,status=link;CFDictionaryRef d=0;
     CFNumberRef v[3];const void *keys[]={CFSTR("Power Status"),CFSTR("Card Mode"),CFSTR("Link Status")};
     v[0]=CFNumberCreate(0,kCFNumberShortType,&p);
     v[1]=CFNumberCreate(0,kCFNumberShortType,&mode);
-    v[2]=CFNumberCreate(0,kCFNumberShortType,&unknown);
+    v[2]=CFNumberCreate(0,kCFNumberShortType,&status);
     if(v[0]&&v[1]&&v[2])d=CFDictionaryCreate(0,keys,(const void **)v,3,&kCFTypeDictionaryKeyCallBacks,&kCFTypeDictionaryValueCallBacks);
     if(v[0])CFRelease(v[0]);if(v[1])CFRelease(v[1]);if(v[2])CFRelease(v[2]);return d;
 }
 
 int main(int argc,char **argv)
 {
-    SCDynamicStoreRef store;CFStringRef owned=0;int old=-1,seen=0,result=0;
+    SCDynamicStoreRef store;CFStringRef owned=0;int old=-1,oldLink=-1,seen=0,result=0;
     struct sigaction sa;
     if(argc!=2||strcmp(argv[1],"--watch")||geteuid()!=0){fprintf(stderr,"Usage (root): dwa121-airport-monitor --watch\n");return 1;}
     if(appleCard()){fprintf(stderr,"Apple AirPort also present; global legacy notifications are ambiguous.\n");return 1;}
@@ -75,21 +80,22 @@ int main(int argc,char **argv)
     sigaction(SIGTERM,&sa,0);sigaction(SIGINT,&sa,0);sigaction(SIGHUP,&sa,0);
     store=SCDynamicStoreCreate(0,CFSTR("DWA121 P0.2 state relay"),0,0);if(!store)return 1;
     while(!stopping){
-        int power=0;CFStringRef name,key=0;CFDictionaryRef d;
+        int power=0,link=0;CFStringRef name,key=0;CFDictionaryRef d;
         if(appleCard()){result=1;break;}
-        name=snapshot(&power);
+        name=snapshot(&power,&link);
         if(name){key=SCDynamicStoreKeyCreateNetworkInterfaceEntity(0,kSCDynamicStoreDomainState,name,kSCEntNetAirPort);CFRelease(name);}
-        if(owned&&(!key||!CFEqual(owned,key))){SCDynamicStoreRemoveValue(store,owned);CFRelease(owned);owned=0;old=-1;}
+        if(owned&&(!key||!CFEqual(owned,key))){SCDynamicStoreRemoveValue(store,owned);CFRelease(owned);owned=0;old=oldLink=-1;}
         if(!key){if(seen){notify(CFSTR("AirPortDriverLoaded"),CFSTR("0"));seen=0;}}
         else {
-            if(!owned||power!=old){
-                d=state(power);if(!d){CFRelease(key);result=1;break;}
+            if(!owned||power!=old||link!=oldLink){
+                d=state(power,link);if(!d){CFRelease(key);result=1;break;}
                 if(!(owned?SCDynamicStoreSetValue(store,key,d):SCDynamicStoreAddTemporaryValue(store,key,d))){
                     CFRelease(d);CFRelease(key);fprintf(stderr,"Cannot own/update AirPort state key; existing state preserved.\n");result=1;break;
                 }
                 CFRelease(d);if(!owned)owned=CFRetain(key);
-                printf("DWA121 state: Power Status=%d\n",power);fflush(stdout);old=power;
-                if(power)notify(CFSTR("Power_On"),CFSTR("1"));
+                printf("DWA121 state: Power Status=%d Link Status=%d\n",power,link);fflush(stdout);
+                if(power&&power!=old)notify(CFSTR("Power_On"),CFSTR("1"));
+                old=power;oldLink=link;
             }
             if(!seen){notify(CFSTR("AirPortDriverLoaded"),CFSTR("1"));seen=1;}
             CFRelease(key);

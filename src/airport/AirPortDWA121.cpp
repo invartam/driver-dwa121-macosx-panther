@@ -1,3 +1,4 @@
+#include "../control/airport_status.h"
 /* Panther-only, opt-in AirPort status and passive scan companion.
  * Wire evidence: docs/airport-p02-architecture.md. No Apple code included. */
 #include <IOKit/IOService.h>
@@ -143,11 +144,9 @@ IOReturn AirPortDWA121::readPower()
     bool on=value==kOSBooleanTrue;value->release();
     return on?3:0;
 }
-/* AppleAirPort::getWirelessStatus initializes the first word to zero,
- * returns port status zero when HCF status is unavailable, and writes the
- * hardware address at +40. WirelessGetInfo2 copies it to +58 and then reads
- * power independently with command 13. Other information is unavailable in
- * P0.2, not a claim of association or a synthetic signal measurement. */
+/* Native port status and identity come from one locked engine snapshot.
+ * Connected means verified WPA2/data port/heartbeat, never DHCP or acceptance.
+ * The native command carries no generation; no identity is cached here. */
 IOReturn AirPortDWA121::readStatus(void *out,IOByteCount *size)
 {
     if(!out||!size||*size!=56)return kIOReturnBadArgument;
@@ -158,20 +157,16 @@ IOReturn AirPortDWA121::readStatus(void *out,IOByteCount *size)
     if(!value)return kIOReturnNotAttached;
     OSData *mac=OSDynamicCast(OSData,value);
     if(!mac||mac->getLength()!=6){value->release();return kIOReturnNotReady;}
-    bzero(out,56);
-    /* Native Card Mode=1: infrastructure. AppleAirPort derives this from
-     * CREATE_IBSS (HCF 0xfc81) being zero. RTL station mode is infrastructure. */
-    ((unsigned char *)out)[5]=1;
-    bcopy(mac->getBytesNoCopy(),(unsigned char *)out+40,6);
-    value->release();*size=56;
     dwa_airport_target target;bzero(&target,sizeof(target));
     IOLockLock(lock);IOReturn state=core(DWA_AIRPORT_STATUS,0,&target);IOLockUnlock(lock);
-    if(state==kIOReturnSuccess){
-        unsigned char *p=(unsigned char *)out;
-        if(target.phase==DWA_AP_CONNECTED&&target.ssid_length<32){
-            bcopy(target.ssid,p+6,target.ssid_length);bcopy(target.bssid,p+46,6);p[55]=1;
-        }else if(target.phase==DWA_AP_FAILED||target.phase==DWA_AP_DISCONNECTED)p[55]=4;
-    }
+    /* Calibration holds the engine lock. Publish unknown/non-associated,
+     * never cached Connected. Panther treats an API failure as non-client
+     * (Internet Sharing) and can retain that mode after recovery. */
+    if(state==kIOReturnBusy)bzero(&target,sizeof(target));
+    else if(state!=kIOReturnSuccess){value->release();bzero(out,56);return state;}
+    bool valid=dwa_airport_status(&target,(const rtl_u8 *)mac->getBytesNoCopy(),(rtl_u8 *)out,56)!=0;
+    value->release();*size=56;
+    if(!valid)return kIOReturnNotReady;
     return kIOReturnSuccess;
 }
 IOReturn AirPortDWA121::newUserClient(task_t task,void *security,UInt32 type,IOUserClient **out)
@@ -261,6 +256,17 @@ IOReturn DWA121AirPortClient::command(void *in,void *out,IOByteCount n,IOByteCou
         IOLockLock(scanLock);
         IOReturn r=scanCommand(op,(unsigned char *)in+1,out);
         IOLockUnlock(scanLock);return r;
+    }
+    /* WirelessGetInfo2 requires command 3 only when port status is 4.
+     * Bounds 0/92 are the original framework's normalized-quality request.
+     * PHY metrics remain unavailable (legacy zero fields); no RSSI conversion
+     * or positive signal strength is claimed. This is strictly read-only. */
+    if(op==3){
+        const unsigned char *p=(const unsigned char *)in+1;
+        if(!out||n!=9||*outSize!=12||p[0]||p[1]||p[2]||p[3]||p[4]||p[5]||p[6]||p[7]!=92)return kIOReturnBadArgument;
+        /* These unavailable metrics make no claim about association. A link
+         * ending between 18 and 3 must not turn the API into AP/server mode. */
+        bzero(out,12);return kIOReturnSuccess;
     }
     if(*(unsigned char *)in==18){
         if(n!=1)return kIOReturnBadArgument;

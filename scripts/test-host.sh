@@ -71,3 +71,5 @@ cc -std=c89 -pedantic -Wall -Wextra -Werror -fsanitize=address,undefined -g src/
 ./artifacts/scan-test-host
 cc -std=c89 -pedantic -Wall -Wextra -Werror -fsanitize=address,undefined -g src/control/airport_join.c src/net80211/beacon.c tests/airport_join_test.c -o artifacts/airport-join-test-host
 ./artifacts/airport-join-test-host
+cc -std=c89 -pedantic -Wall -Wextra -Werror -fsanitize=address,undefined -g src/control/airport_status.c tests/airport_status_test.c -o artifacts/airport-status-test-host
+./artifacts/airport-status-test-host

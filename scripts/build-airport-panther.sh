@@ -12,8 +12,9 @@ g++ $flags -fapple-kext -fno-exceptions -fno-rtti -c src/airport/AirPortDWA121.c
 gcc $flags -c src/net80211/scan.c -o "$out/scan.o"
 gcc $flags -c src/net80211/beacon.c -o "$out/beacon.o"
 gcc $flags -c src/control/airport_join.c -o "$out/join.o"
+gcc $flags -c src/control/airport_status.c -o "$out/status.o"
 gcc $flags -c src/airport/module.c -o "$out/module.o"
-ld -arch ppc -r -o "$out/DWA121AirPortP02.kext/Contents/MacOS/DWA121AirPortP02" "$out/airport.o" "$out/scan.o" "$out/beacon.o" "$out/join.o" "$out/module.o" -lkmodc++ -lcc_kext
+ld -arch ppc -r -o "$out/DWA121AirPortP02.kext/Contents/MacOS/DWA121AirPortP02" "$out/airport.o" "$out/scan.o" "$out/beacon.o" "$out/join.o" "$out/status.o" "$out/module.o" -lkmodc++ -lcc_kext
 cp src/airport/Info.plist "$out/DWA121AirPortP02.kext/Contents/Info.plist"
 gcc -arch ppc -mcpu=750 -Wall -Werror -O2 src/tools/dwa121-airport.c -F/System/Library/PrivateFrameworks -framework Apple80211 -framework IOKit -framework CoreFoundation -o "$out/dwa121-airport"
 gcc -arch ppc -mcpu=750 -Wall -Werror -O2 src/tools/dwa121-airport-service.c -framework SystemConfiguration -framework IOKit -framework CoreFoundation -o "$out/dwa121-airport-service"
@@ -25,3 +26,6 @@ gcc -arch ppc -mcpu=750 -Wall -Werror -O2 src/net80211/scan.c tests/scan_test.c 
 gcc -arch ppc -mcpu=750 -Wall -Werror -O2 src/control/airport_join.c src/net80211/beacon.c tests/airport_join_test.c -o "$out/airport-join-test"
 gcc -arch ppc -mcpu=750 -Wall -Werror -O2 src/tools/dwa121-airport-broker.c -framework IOKit -framework CoreFoundation -o "$out/dwa121-airport-broker"
 gcc -arch ppc -mcpu=750 -Wall -Werror -O2 tests/airport_join_transport_test.c -framework IOKit -framework CoreFoundation -o "$out/airport-join-transport-test"
+
+gcc -arch ppc -mcpu=750 -Wall -Werror -O2 src/control/airport_status.c tests/airport_status_test.c -o "$out/airport-status-test"
+gcc -arch ppc -mcpu=750 -Wall -Werror -O2 tests/airport_status_probe.c -F/System/Library/PrivateFrameworks -framework Apple80211 -framework IOKit -framework CoreFoundation -o "$out/airport-status-probe"
