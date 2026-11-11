@@ -11,17 +11,52 @@
 #include <libkern/c++/OSBoolean.h>
 #include <libkern/c++/OSData.h>
 #include <libkern/c++/OSString.h>
+#include <libkern/c++/OSArray.h>
+#include <libkern/c++/OSNumber.h>
 #include <kern/clock.h>
 #include "../net80211/scan.h"
 #include "../control/airport_protocol.h"
 extern "C" {
 #include <sys/proc.h>
 #include <sys/vm.h>
+#include <sys/ucred.h>
 }
 
 static rtl_u32 nativeScanNow();
 static void secretWipe(void *v,unsigned int n)
 {volatile unsigned char *p=(volatile unsigned char *)v;while(n--)*p++=0;}
+class NativeInputWiper {
+    void *input;IOByteCount bytes;
+public:
+    NativeInputWiper(void *p,IOByteCount n):input(p),bytes(n) {}
+    ~NativeInputWiper(){if(input)secretWipe(input,bytes);}
+};
+/* Panther's "local" privilege includes inactive console sessions. Read the
+ * same kernel-owned registry table, but require the foreground session and
+ * retain its session ID, not a process name or a client-supplied UID. */
+static OSObject *consoleSession(unsigned int uid,unsigned int *session)
+{
+    OSObject *value=IORegistryEntry::getRegistryRoot()->copyProperty("IOConsoleUsers");
+    OSArray *users=OSDynamicCast(OSArray,value);bool found=false;
+    if(users)for(unsigned int i=0;i<users->getCount();++i){
+        OSDictionary *user=OSDynamicCast(OSDictionary,users->getObject(i));
+        if(!user)continue;
+        OSNumber *id=OSDynamicCast(OSNumber,user->getObject("kCGSSessionUserIDKey"));
+        OSNumber *sid=OSDynamicCast(OSNumber,user->getObject("kCGSSessionIDKey"));
+        if(id&&sid&&id->unsigned32BitValue()==uid&&
+           user->getObject("kCGSSessionOnConsoleKey")==kOSBooleanTrue){
+            *session=sid->unsigned32BitValue();found=true;break;
+        }
+    }
+    if(found)return value; /* retained publication identity, not a bearer token */
+    if(value)value->release();return 0;
+}
+static bool callerIDs(unsigned int *real,unsigned int *effective)
+{
+    struct proc *p=current_proc();if(!p||!p->p_cred)return false;
+    pcred_readlock(p);*real=p->p_cred->p_ruid;*effective=p->p_ucred->cr_uid;
+    pcred_unlock(p);return true;
+}
 class AirPortDWA121 : public IOService {
     OSDeclareDefaultStructors(AirPortDWA121)
     IOService *hardware,*controller;
@@ -68,6 +103,12 @@ class DWA121AirPortClient : public IOUserClient {
     rtl_u32 secretTime;
     IOTimerEventSource *secretTimer;
     bool secretTimerAdded;
+    task_t openingTask;
+    unsigned int openingUID,openingSession;
+    OSObject *openingConsoleTable;
+    bool consoleBound,revoked;
+    bool mutationAllowed();
+    IOReturn closeClient();
     static void expireSecret(OSObject *,IOTimerEventSource *);
     IOReturn secretCommand(unsigned int,void *,IOByteCount,rtl_u32 *);
     IOReturn scanCommand(unsigned int,void *,void *);
@@ -184,11 +225,18 @@ IOReturn AirPortDWA121::newUserClient(task_t task,void *security,UInt32 type,IOU
 }
 bool DWA121AirPortClient::initWithTask(task_t task,void *security,UInt32 type)
 {
+    openingTask=0;openingConsoleTable=0;openingUID=openingSession=0;consoleBound=false;revoked=false;
     radio=0;scanLock=0;snapshot=0;generation=snapshotTime=0;snapshotReady=false;
     requestedLength=0;bzero(requested,sizeof(requested));bzero(&method,sizeof(method));
     isBroker=type==DWA_AIRPORT_BROKER_TYPE;secretLength=0;secretTime=0;secretTimer=0;secretTimerAdded=false;bzero(secret,sizeof(secret));
     if((type!=12&&!isBroker)||(isBroker&&clientHasPrivilege(task,kIOClientPrivilegeAdministrator)!=kIOReturnSuccess)||
        !IOUserClient::initWithTask(task,security,type))return false;
+    openingTask=task;task_reference(openingTask);
+    unsigned int real,effective;
+    if(current_task()==task&&callerIDs(&real,&effective)&&real==effective){
+        openingUID=effective;openingConsoleTable=consoleSession(effective,&openingSession);
+        consoleBound=openingConsoleTable!=0;
+    }
     method.object=this;method.func=(IOMethod)&DWA121AirPortClient::command;
     method.flags=kIOUCStructIStructO;method.count0=0xffffffffU;
     /* Nonzero sentinel preserves four-argument dispatch for zero-length output.
@@ -210,6 +258,8 @@ bool DWA121AirPortClient::start(IOService *p)
 }
 void DWA121AirPortClient::free()
 {
+    if(openingTask){task_deallocate(openingTask);openingTask=0;}
+    if(openingConsoleTable){openingConsoleTable->release();openingConsoleTable=0;}
     if(isBroker&&radio)radio->brokerClose(this);
     if(secretTimer){secretTimer->cancelTimeout();if(secretTimerAdded&&radio)radio->getWorkLoop()->removeEventSource(secretTimer);secretTimer->release();}
     secretWipe(secret,sizeof(secret));
@@ -218,19 +268,36 @@ void DWA121AirPortClient::free()
     if(radio){radio->release();radio=0;}IOUserClient::free();
 }
 IOReturn DWA121AirPortClient::clientClose()
+{ return current_task()==openingTask?closeClient():kIOReturnNotPrivileged; }
+IOReturn DWA121AirPortClient::closeClient()
 { if(isBroker&&radio)radio->brokerClose(this);
-  IOLockLock(scanLock);secretWipe(secret,sizeof(secret));secretLength=0;if(secretTimer)secretTimer->cancelTimeout();IOLockUnlock(scanLock);
+  IOLockLock(scanLock);revoked=true;secretWipe(secret,sizeof(secret));secretLength=0;if(secretTimer)secretTimer->cancelTimeout();IOLockUnlock(scanLock);
   terminate();return kIOReturnSuccess; }
-IOReturn DWA121AirPortClient::clientDied() { return clientClose(); }
+IOReturn DWA121AirPortClient::clientDied() { return closeClient(); }
 IOExternalMethod *DWA121AirPortClient::getTargetAndMethodForIndex(IOService **target,UInt32 index)
 { if(!target||index!=0)return 0;*target=this;return &method; }
+bool DWA121AirPortClient::mutationAllowed()
+{
+    unsigned int real,effective,session;
+    if(revoked||current_task()!=openingTask||!callerIDs(&real,&effective))return false;
+    /* Root remains an explicit authority, but cannot use another task's port. */
+    if(!effective)return true;
+    OSObject *table=consoleSession(effective,&session);
+    bool match=table&&table==openingConsoleTable&&session==openingSession;
+    if(table)table->release();
+    if(real!=effective||effective!=openingUID||!consoleBound||!match){
+        revoked=true;return false;
+    }
+    return true;
+}
 IOReturn DWA121AirPortClient::command(void *in,void *out,IOByteCount n,IOByteCount *outSize)
 {
+    NativeInputWiper wipeInput(!isBroker&&in&&n&&*(unsigned char *)in==26?in:0,n);
     if(!in||!outSize||n<1)return kIOReturnBadArgument;
     if(isBroker){
         if(n!=sizeof(dwa_airport_request)||*outSize!=sizeof(dwa_airport_reply)||!out)return kIOReturnBadArgument;
         bzero(out,sizeof(dwa_airport_reply));
-        if(clientHasPrivilege(current_task(),kIOClientPrivilegeAdministrator)!=kIOReturnSuccess)return kIOReturnNotPrivileged;
+        if(current_task()!=openingTask||isInactive()||clientHasPrivilege(current_task(),kIOClientPrivilegeAdministrator)!=kIOReturnSuccess)return kIOReturnNotPrivileged;
         return radio?radio->brokerCommand(this,(const dwa_airport_request *)in,(dwa_airport_reply *)out):kIOReturnNotAttached;
     }
     struct proc *caller=current_proc();
@@ -240,6 +307,12 @@ IOReturn DWA121AirPortClient::command(void *in,void *out,IOByteCount n,IOByteCou
         (unsigned int)*(unsigned char *)in,(unsigned long)n,(unsigned long)*outSize);
     if(isInactive()||!radio)return kIOReturnNotAttached;
     unsigned int op=*(unsigned char *)in;
+    if(op==8||op==12||op==17||op==26){
+        IOLockLock(scanLock);bool allowed=mutationAllowed();
+        if(!allowed&&current_task()==openingTask){secretWipe(secret,sizeof(secret));secretLength=0;}
+        IOLockUnlock(scanLock);
+        if(!allowed){if(op==26)secretWipe(in,n);return kIOReturnNotPrivileged;}
+    }
     if(op==17||op==26){
         if(*outSize!=0)return kIOReturnBadArgument;
         IOLockLock(scanLock);

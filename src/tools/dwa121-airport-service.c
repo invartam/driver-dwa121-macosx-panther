@@ -56,13 +56,14 @@ int main(int argc,char **argv)
 {
     SCPreferencesRef prefs;CFDictionaryRef old;CFStringRef set=0,link=0,name=0;
     CFMutableDictionaryRef service=0,interface=0,airport=0;int ok=0,remove;
-    if(argc!=2||(strcmp(argv[1],"add")&&strcmp(argv[1],"remove"))||geteuid()!=0){
-        fprintf(stderr,"Usage (root): dwa121-airport-service add|remove\n");return 1;
+    if(argc!=2||(strcmp(argv[1],"add")&&strcmp(argv[1],"remove")&&strcmp(argv[1],"remove-if-present"))||geteuid()!=0){
+        fprintf(stderr,"Usage (root): dwa121-airport-service add|remove|remove-if-present\n");return 1;
     }
-    remove=!strcmp(argv[1],"remove");
+    remove=strcmp(argv[1],"add")!=0;
     prefs=SCPreferencesCreate(0,CFSTR("DWA121 P0.2"),0);
     if(!prefs||!SCPreferencesLock(prefs,FALSE)){if(prefs)CFRelease(prefs);return 1;}
     old=SCPreferencesPathGetValue(prefs,SERVICE);
+    if(!old&&!strcmp(argv[1],"remove-if-present")){ok=1;goto done;}
     if(remove){
         CFTypeRef marker=old?CFDictionaryGetValue(old,OWNER):0;
         if(!marker||!CFEqual(marker,OWNER_VALUE)){fprintf(stderr,"No owned P0.2 service; unchanged.\n");goto done;}

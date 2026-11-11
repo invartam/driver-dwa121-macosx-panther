@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>local.dwa121.airport.preview</string>
+<key>CFBundleName</key><string>DWA121 AirPort Preview</string>
+<key>CFBundleShortVersionString</key><string>0.3.4</string>
+<key>CFBundleVersion</key><string>0.3.4</string>
+<key>IFPkgFormatVersion</key><real>0.1</real>
+<key>IFPkgFlagAuthorizationAction</key><string>RootAuthorization</string>
+<key>IFPkgFlagDefaultLocation</key><string>/</string>
+<key>IFPkgFlagRelocatable</key><false/>
+<key>IFPkgFlagRootVolumeOnly</key><true/>
+<key>IFPkgFlagRestartAction</key><string>NoRestart</string>
+<key>IFPkgFlagAllowBackRev</key><false/>
+<key>IFPkgFlagUpdateInstalledLanguages</key><false/>
+</dict></plist>

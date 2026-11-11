@@ -11,6 +11,9 @@ class DWA121ControlClient : public IOUserClient {
     IOExternalMethod networkMethod;
     IOExternalMethod airportMethod;
     bool nativeOwner;
+    task_t openingTask;
+    IOReturn callerPrivilege();
+    IOReturn closeClient();
     IOReturn airport(void *,void *,IOByteCount,IOByteCount *);
     IOReturn network(void *,void *,IOByteCount,IOByteCount *);
     IOReturn command(void *,void *,IOByteCount,IOByteCount *);

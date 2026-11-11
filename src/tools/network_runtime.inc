@@ -104,10 +104,12 @@ static int network_send(const unsigned char *eth,unsigned int length)
     r.operation=DWA_WPA_DATA_SEND;r.length=n;if(wpa_call(&r))return -1;
     do {
         if(!network_pulse()||!transmit(DWA_ASSOC_POLL,0,0))return -1;
-        if(tx.result){if(tx.result!=RTL_TX_SUCCESS||tx.failed)return -1;++data_sends;return 0;}
+        if(tx.result){if(tx.result!=RTL_TX_SUCCESS||tx.failed){
+            fprintf(stderr,"Network TX completion failed: result=%lu failed=%lu\n",(unsigned long)tx.result,(unsigned long)tx.failed);return -1;}
+            ++data_sends;return 0;}
         usleep(1000);
     }while((unsigned int)(now_ms()-start)<3500);
-    return -1;
+    fprintf(stderr,"Network TX completion deadline exceeded (3500 ms)\n");return -1;
 }
 static int network_ip_ready(void)
 {

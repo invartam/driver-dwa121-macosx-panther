@@ -263,9 +263,9 @@ bool PantherRXEngine::shutdown()
      * callback only uses the independent completion lock and its own ref. */
     detachSources();
     publish();
-    IOLog("DWA121Diagnostic: persistent RX stopped USB=%u/%u aborts=%u drained=%d errors=%u beacons=%u\n",
+    IOLog("DWA121Diagnostic: persistent RX stopped USB=%u/%u aborts=%u drained=%d errors=%u beacons=%u lastError=%08lx watchdogs=%u\n",
           report.usb.completed,report.usb.submitted,report.abortRequests,drained,
-          report.usb.usbErrors,report.usb.frames.beacons);
+          report.usb.usbErrors,report.usb.frames.beacons,(unsigned long)report.usb.lastError,report.watchdogs);
     return drained;
 }
 void PantherRXEngine::detachSources()

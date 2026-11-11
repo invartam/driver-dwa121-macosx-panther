@@ -1,0 +1,44 @@
+#!/bin/sh
+# PackageMaker bundle preflight; installs beside stable, never activates it.
+set -eu
+PATH=/bin:/sbin:/usr/bin:/usr/sbin
+export PATH
+umask 077
+fail() { echo "DWA121 preflight: $*" >&2; exit 1; }
+trusted() {
+    [ ! -L "$1" ] && [ -d "$1" ] && [ -z "$(find "$1" -prune ! -user root -print)" ] || fail "Unsafe directory: $1"
+    [ -z "$(find "$1" -prune -perm +022 -print)" ] || fail "Writable directory: $1"
+}
+[ "$(id -u)" = 0 ] || fail 'Administrator authorization required.'
+[ "$(uname -p)" = powerpc ] && [ "$(sw_vers -productVersion)" = 10.3.9 ] || fail 'Requires Mac OS X 10.3.9 PowerPC.'
+[ "${3:-}" = / ] || fail 'Only the running system volume is supported.'
+[ "$(df -k / | tail -1 | awk '{print $4}')" -ge 65536 ] || fail 'At least 64 MiB free space required.'
+for dir in /usr /usr/local /usr/local/libexec /usr/local/libexec/dwa121-airport /var/db; do
+    if [ -e "$dir" ] || [ -L "$dir" ]; then trusted "$dir"; fi
+done
+state=/var/db/dwa121-airport
+base=/usr/local/libexec/dwa121-airport/0.3.4
+apps='/Applications/DWA121 AirPort Preview'
+if [ -e "$state" ] || [ -L "$state" ]; then
+    trusted "$state"
+    [ -n "$(find "$state" -prune -perm 0700 -print)" ] || fail 'State directory must have mode 0700.'
+else mkdir -m 700 "$state"; fi
+[ ! -e "$state/action.lock" ] || fail 'An activation action is running or interrupted.'
+if kextstat | grep -q local.airportp02.DWA121; then fail 'Deactivate the current AirPort prototype first.'; fi
+if [ -f "$state/active" ]; then fail 'Deactivate the previous installation first.'; fi
+if [ -e "$base" ] || [ -L "$base" ]; then
+    trusted "$base"
+    [ -f "$base/OWNER" ] && [ "$(cat "$base/OWNER")" = DWA121-AIRPORT-P034 ] || fail 'Existing installation is not owned by this package.'
+    "$base/bin/dwa121-airport-supervisor" status && fail 'Runtime still active.'
+fi
+if [ -e "$apps" ] || [ -L "$apps" ]; then
+    trusted "$apps"
+    [ -f "$apps/OWNER" ] && [ "$(cat "$apps/OWNER")" = DWA121-AIRPORT-P034 ] || fail 'Finder directory is already occupied.'
+fi
+# Snapshot only files that this installation can replace. Stable profile and
+# network preferences are not touched during installation and are not copied.
+backup=$(mktemp -d "$state/install-backup.XXXXXX") || fail 'Cannot create protected backup.'
+if [ -d "$base" ]; then cp -Rp "$base" "$backup/runtime"; fi
+if [ -d "$apps" ]; then cp -Rp "$apps" "$backup/Finder"; fi
+printf '%s\n' "$backup" > "$state/last-install-backup"
+echo 'Preflight passed. The stable driver may remain active; installation will not interrupt it.'

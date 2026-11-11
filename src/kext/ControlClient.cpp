@@ -6,11 +6,12 @@
 OSDefineMetaClassAndStructors(DWA121ControlClient,IOUserClient)
 bool DWA121ControlClient::initWithTask(task_t task,void *security,UInt32 type)
 {
-    driver=0; bzero(&method,sizeof(method));
+    driver=0; openingTask=0;bzero(&method,sizeof(method));
     nativeOwner=type==DWA_AIRPORT_OWNER_TYPE;
     if ((!nativeOwner&&type!=DWA_CONTROL_TYPE) || clientHasPrivilege(task,kIOClientPrivilegeAdministrator)!=kIOReturnSuccess)
         return false;
     if (!IOUserClient::initWithTask(task,security,type)) return false;
+    openingTask=task;task_reference(openingTask);
     method.object=this; method.func=(IOMethod)&DWA121ControlClient::command;
     method.flags=kIOUCStructIStructO; method.count0=sizeof(dwa_control_request);
     method.count1=sizeof(dwa_control_reply);
@@ -39,11 +40,13 @@ bool DWA121ControlClient::start(IOService *provider)
     driver=d; driver->retain(); return true;
 }
 IOReturn DWA121ControlClient::clientClose()
+{ return current_task()==openingTask?closeClient():kIOReturnNotPrivileged; }
+IOReturn DWA121ControlClient::closeClient()
 {
     if (driver) driver->releaseControl(this);
     terminate(); return kIOReturnSuccess;
 }
-IOReturn DWA121ControlClient::clientDied() { return clientClose(); }
+IOReturn DWA121ControlClient::clientDied() { return closeClient(); }
 void DWA121ControlClient::stop(IOService *provider)
 {
     if (driver) driver->releaseControl(this);
@@ -51,8 +54,14 @@ void DWA121ControlClient::stop(IOService *provider)
 }
 void DWA121ControlClient::free()
 {
+    if(openingTask){task_deallocate(openingTask);openingTask=0;}
     if (driver) { driver->releaseControl(this); driver->release(); driver=0; }
     IOUserClient::free();
+}
+IOReturn DWA121ControlClient::callerPrivilege()
+{
+    if(current_task()!=openingTask||isInactive())return kIOReturnNotPrivileged;
+    return clientHasPrivilege(current_task(),kIOClientPrivilegeAdministrator);
 }
 IOExternalMethod *DWA121ControlClient::getTargetAndMethodForIndex(IOService **target,UInt32 index)
 {
@@ -65,14 +74,14 @@ IOReturn DWA121ControlClient::airport(void *in,void *out,IOByteCount n,IOByteCou
     if(!in||!out||!size||n!=sizeof(rtl_u32)||*size!=sizeof(dwa_airport_target)||
        *(rtl_u32 *)in!=DWA_AIRPORT_VERSION)return kIOReturnBadArgument;
     bzero(out,sizeof(dwa_airport_target));
-    if(clientHasPrivilege(current_task(),kIOClientPrivilegeAdministrator)!=kIOReturnSuccess)return kIOReturnNotPrivileged;
+    if(callerPrivilege()!=kIOReturnSuccess)return kIOReturnNotPrivileged;
     return driver?driver->airportTarget(this,(dwa_airport_target *)out):kIOReturnNotAttached;
 }
 IOReturn DWA121ControlClient::network(void *input,void *output,IOByteCount inSize,IOByteCount *outSize)
 {
     if(!input||!output||!outSize||inSize!=sizeof(dwa_net_request)||*outSize!=sizeof(dwa_net_reply))return kIOReturnBadArgument;
     bzero(output,sizeof(dwa_net_reply));
-    IOReturn result=clientHasPrivilege(current_task(),kIOClientPrivilegeAdministrator);
+    IOReturn result=callerPrivilege();
     if(result==kIOReturnSuccess)result=driver?driver->networkCommand(this,(const dwa_net_request *)input,(dwa_net_reply *)output):kIOReturnNotAttached;
     bzero(input,inSize);return result;
 }
@@ -80,7 +89,7 @@ IOReturn DWA121ControlClient::wpa(void *input,void *output,IOByteCount inSize,IO
 {
     if(!input||!output||!outSize||inSize!=sizeof(dwa_wpa_request)||*outSize!=sizeof(dwa_assoc_reply))return kIOReturnBadArgument;
     bzero(output,sizeof(dwa_assoc_reply));
-    IOReturn result=clientHasPrivilege(current_task(),kIOClientPrivilegeAdministrator);
+    IOReturn result=callerPrivilege();
     if(result==kIOReturnSuccess)result=driver?driver->wpaCommand(this,(const dwa_wpa_request *)input,(dwa_assoc_reply *)output):kIOReturnNotAttached;
     /* Mach's copied input may contain a temporal key. Never retain or log it. */
     volatile unsigned char *p=(volatile unsigned char *)input;
@@ -92,7 +101,7 @@ IOReturn DWA121ControlClient::association(void *input,void *output,IOByteCount i
     if(!input || !output || !outSize || inSize!=sizeof(dwa_assoc_request) ||
        *outSize!=sizeof(dwa_assoc_reply)) return kIOReturnBadArgument;
     bzero(output,sizeof(dwa_assoc_reply));
-    IOReturn privilege=clientHasPrivilege(current_task(),kIOClientPrivilegeAdministrator);
+    IOReturn privilege=callerPrivilege();
     if(privilege!=kIOReturnSuccess) return privilege;
     if(!driver) return kIOReturnNotAttached;
     return driver->associationCommand(this,(const dwa_assoc_request *)input,(dwa_assoc_reply *)output);
@@ -102,7 +111,7 @@ IOReturn DWA121ControlClient::command(void *input,void *output,IOByteCount inSiz
     if (!input || !output || !outSize || inSize!=sizeof(dwa_control_request) ||
         *outSize!=sizeof(dwa_control_reply)) return kIOReturnBadArgument;
     bzero(output,sizeof(dwa_control_reply));
-    IOReturn privilege=clientHasPrivilege(current_task(),kIOClientPrivilegeAdministrator);
+    IOReturn privilege=callerPrivilege();
     if (privilege!=kIOReturnSuccess) return privilege;
     if (!driver) return kIOReturnNotAttached;
     return driver->controlCommand(this,(const dwa_control_request *)input,(dwa_control_reply *)output);

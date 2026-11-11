@@ -202,11 +202,11 @@ static void probe_tick(void *cookie,void *unused)
     unsigned int i;(void)cookie;(void)unused;
     for(i=0;i<(probe_network?32U:8U)&&!probe_failed;++i) {
         struct rtl_eapol_view view;
-        if(!receive(DWA_CONTROL_NEXT,0)){probe_failure(0,16);break;}
+        if(!receive(DWA_CONTROL_NEXT,0)){puts("WPA2 transport receive unavailable");probe_failure(0,16);break;}
         if(!(rx.flags&DWA_CONTROL_FRAME))break;
         if(rx.age_ms>DWA_FRAME_MAX_AGE_MS)continue;
         if(probe_data&&probe_ok&&rx.frame.kind==DWA_FRAME_CCMP) {
-            int got=data_receive();if(got<0){probe_failure(0,16);break;}
+            int got=data_receive();if(got<0){puts("WPA2 authenticated data receive ended");probe_failure(0,16);break;}
             if(got){eloop_terminate();return;}continue;
         }
         if(rx.frame.kind==DWA_FRAME_MANAGEMENT) {
@@ -226,7 +226,7 @@ static void probe_tick(void *cookie,void *unused)
         }
     }
     if(probe_network&&probe_ok&&!probe_failed) {
-        if(network_tick()){probe_failure(0,16);return;}
+        if(network_tick()){puts("WPA2 network transport ended");probe_failure(0,16);return;}
         if(network_finished)return;
     } else if(probe_data&&probe_ok&&!probe_failed) {
         if((unsigned int)(now_ms()-data_start)>=9000){probe_failure(0,16);return;}

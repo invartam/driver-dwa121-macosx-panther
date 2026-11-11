@@ -1,0 +1,6 @@
+{
+  Description = "DWA121 AirPort experimental preview";
+  Provides = ("DWA121AirPortPreview");
+  Requires = ("Network");
+  OrderPreference = "Late";
+}

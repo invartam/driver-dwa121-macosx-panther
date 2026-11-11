@@ -29,3 +29,6 @@ gcc -arch ppc -mcpu=750 -Wall -Werror -O2 tests/airport_join_transport_test.c -f
 
 gcc -arch ppc -mcpu=750 -Wall -Werror -O2 src/control/airport_status.c tests/airport_status_test.c -o "$out/airport-status-test"
 gcc -arch ppc -mcpu=750 -Wall -Werror -O2 tests/airport_status_probe.c -F/System/Library/PrivateFrameworks -framework Apple80211 -framework IOKit -framework CoreFoundation -o "$out/airport-status-probe"
+gcc -arch ppc -mcpu=750 -Wall -Werror -O2 tests/airport_access_test.c -framework IOKit -framework CoreFoundation -o "$out/airport-access-test"
+gcc -arch ppc -mcpu=750 -Wall -Werror -O2 src/tools/dwa121-airport-supervisor.c -o "$out/dwa121-airport-supervisor"
+gcc -arch ppc -mcpu=750 -Wall -Werror -O2 src/tools/dwa121-airport-diagnostic.c -framework IOKit -framework CoreFoundation -o "$out/dwa121-airport-diagnostic"
