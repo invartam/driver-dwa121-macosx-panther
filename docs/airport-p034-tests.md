@@ -164,3 +164,30 @@ Les journaux du démarrage raté sont nécessaires avant correction ciblée.
 La désactivation retire aussi l’option de démarrage automatique et restaure
 le StartupItem stable. En attendant le diagnostic, conserver l’activation
 manuelle et ne pas réactiver l’option automatique sur ce PowerBook.
+
+
+## Analyse du diagnostic Lombard diagnostic.oSPz5d.tgz
+
+Archive fournie par l’utilisateur après réactivation, collectée le
+11 novembre 2026 à 14:34:47 GMT (15:34:47 heure locale des événements).
+Elle confirme Panther 10.3.9 7W98 PPC, cœur 0.15.3 et compagnon 0.3.4,
+USB Full-Speed **12 Mb/s / bulk 64 octets**, port WPA2 autorisé, association
+sur en1, M2/M4, installation pairwise/group CCMP et DHCP obtenu. Les compteurs
+RX USB erreurs/timeouts/watchdogs du snapshot sont nuls.
+
+**Aucune cause du démarrage raté n’est établie par cette archive.** Les 300
+lignes de driver-recent.txt sont toutes des lectures périodiques 18/3 ;
+aucun chargement, calibration ou refus du StartupItem n’y figure. Le journal
+runtime courant montre la connexion rétablie, sans horodatage ni frontière
+permettant d’attribuer une tentative au démarrage. Le journal précédent
+n’avait pas été inclus. Le collecteur de branche filtre désormais les
+lectures répétitives avant la troncature et inclut les deux journaux runtime
+ainsi que les événements utilisateurs du projet. Ce changement n’est pas
+encore distribué dans preview1 et ne constitue pas un correctif du démarrage.
+
+Observation distincte : le runtime contient 19 observations Link Status=0 et
+19 Link Status=4. Sans horodatage ni échec WPA2 correspondant, cela ne prouve
+pas 19 ruptures radio. Il faudra distinguer l’état relayé et la connexion
+réelle ; cette observation n’explique pas à elle seule le défaut au boot.
+L’archive privée reste sous artifacts, non versionnée, sans publication des
+identifiants réseau ou matériels de l’utilisateur.

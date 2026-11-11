@@ -14,9 +14,19 @@ trap 'rm -rf "$work"' EXIT
 kextstat | grep -i 'local.dwa121\|local.airportp02' > "$work/kexts.txt" || true
 "$base/bin/dwa121-airport-diagnostic" > "$work/radio.txt" 2>&1 || true
 "$base/bin/dwa121-airport-supervisor" status > "$work/runtime.txt" 2>&1 || true
-if [ -f "$state/runtime.log" ] && [ ! -L "$state/runtime.log" ]; then tail -400 "$state/runtime.log" > "$work/runtime-recent.txt"; fi
+for log in runtime.log runtime.previous.log; do
+    if [ -f "$state/$log" ] && [ ! -L "$state/$log" ]; then
+        tail -400 "$state/$log" > "$work/$log.txt"
+    fi
+done
 if [ -f /var/log/system.log ]; then
-    grep 'kernel: DWA121' /var/log/system.log | tail -300 > "$work/driver-recent.txt" || true
+    # Filter repetitive read-only polling before truncation: otherwise a few
+    # minutes of normal menu activity erase every initialization event.
+    grep 'kernel: DWA121' /var/log/system.log |
+        grep -v 'AirPort P02: caller=.*op=18 in=1 out=56\|AirPort P02: caller=.*op=3 in=9 out=12' |
+        tail -300 > "$work/driver-recent.txt" || true
+    grep -i 'DWA121' /var/log/system.log | grep -v 'kernel:' |
+        tail -100 > "$work/project-userspace-recent.txt" || true
 fi
 if [ -f /Library/Logs/panic.log ]; then
     grep 'panic(cpu\|Darwin Kernel Version\|local.dwa121\|local.airportp02' /Library/Logs/panic.log | tail -60 > "$work/panic-project-summary.txt" || true
