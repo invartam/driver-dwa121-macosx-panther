@@ -14,7 +14,7 @@ trap 'rm -rf "$work"' EXIT
 kextstat | grep -i 'local.dwa121\|local.airportp02' > "$work/kexts.txt" || true
 "$base/bin/dwa121-airport-diagnostic" > "$work/radio.txt" 2>&1 || true
 "$base/bin/dwa121-airport-supervisor" status > "$work/runtime.txt" 2>&1 || true
-for log in runtime.log runtime.previous.log; do
+for log in runtime.log runtime.previous.log boot.log boot.previous.log; do
     if [ -f "$state/$log" ] && [ ! -L "$state/$log" ]; then
         tail -400 "$state/$log" > "$work/$log.txt"
     fi

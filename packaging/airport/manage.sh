@@ -21,6 +21,29 @@ trusted_dir "$state"
 [ -z "$(find "$base" \( -type l -o ! -user root -o -perm +022 \) -print)" ] || fail 'Installation permissions are unsafe.'
 cmd=${1:-status}
 case "$cmd" in activate|boot-activate|deactivate|rollback|uninstall|status|enable-boot|disable-boot) ;; *) fail 'Unknown action.' ;; esac
+stage=preflight
+lockHeld=0
+if [ "$cmd" = boot-activate ]; then
+    [ -n "$(find "$state" -prune -perm 0700 -print)" ] || fail 'Boot log requires protected state directory (0700).'
+    for log in boot.log boot.previous.log; do
+        [ ! -L "$state/$log" ] || fail 'Unsafe boot log.'
+        if [ -e "$state/$log" ]; then [ -f "$state/$log" ] || fail 'Boot log is not a regular file.'; fi
+    done
+    if [ -f "$state/boot.log" ]; then mv "$state/boot.log" "$state/boot.previous.log"; fi
+    # State is root-only; umask 077 protects the newly created log. Manual
+    # activation never rotates it, preserving evidence of a failed boot.
+    exec >> "$state/boot.log" 2>&1
+    echo "$(date -u): boot activation begin"
+fi
+finish() {
+    result=$?
+    trap - EXIT
+    if [ "$lockHeld" = 1 ]; then rmdir "$state/action.lock" || echo 'Action lock cleanup failed.' >&2; fi
+    if [ "$cmd" = boot-activate ]; then echo "$(date -u): boot activation end stage=$stage result=$result"; fi
+    exit "$result"
+}
+trap finish EXIT
+phase() { stage=$1; if [ "$cmd" = boot-activate ]; then echo "$(date -u): stage=$stage"; fi; }
 loaded() { kextstat | grep -q "$1"; }
 disable_boot() {
     if [ -e "$startup" ]; then
@@ -61,13 +84,15 @@ status)
     exit 0 ;;
 esac
 mkdir "$state/action.lock" 2>/dev/null || fail 'Another action is running. If interrupted, restart and inspect action.lock.'
-trap 'rmdir "$state/action.lock"' EXIT
+lockHeld=1
 case "$cmd" in
 activate|boot-activate)
+    phase usb-check
     "$base/bin/dwa121-airport-diagnostic" --usb-present || fail 'DWA-121 unavailable or conflicting Apple AirPort present; unchanged.'
     if [ "$cmd" = activate ]; then
         [ ! -f "$state/active" ] || fail 'Already activated or incomplete previous activation: run Deactivate first.'
     else
+        phase boot-owner-check
         [ -f "$startup/OWNER" ] && [ "$(cat "$startup/OWNER")" = DWA121-AIRPORT-P034 ] || fail 'Boot activation is not enabled.'
         "$base/bin/dwa121-airport-supervisor" status && fail 'Runtime already running.'
     fi
@@ -84,15 +109,23 @@ activate|boot-activate)
         cp -p /Library/Preferences/SystemConfiguration/preferences.plist "$state/preferences.before.plist"
         chmod 600 "$state/preferences.before.plist"
     else
+        phase service-remove
         "$base/bin/dwa121-airport-service" remove-if-present
     fi
     : > "$state/active" # incomplete activation is explicitly recoverable
+    phase core-load
     kextload "$base/DWA121Diagnostic.kext"
+    phase calibration-wait
     sleep 15
+    phase companion-load
     kextload "$base/DWA121AirPortP02.kext"
-    "$base/bin/airport-status-probe" || fail 'No working radio. Run Deactivate to restore stable.'
+    phase native-probe
+    "$base/bin/airport-status-probe" || fail 'Native probe failed (driver/API checks). Run Deactivate to restore stable.'
+    phase service-add
     "$base/bin/dwa121-airport-service" add || fail 'Service creation failed. Run Deactivate.'
+    phase runtime-start
     "$base/bin/dwa121-airport-supervisor" start || fail 'Runtime failed. Run Deactivate.'
+    phase complete
     echo 'Prototype active. Refresh the menu, then select a network and enter <your password>.' ;;
 deactivate) deactivate ;;
 rollback)

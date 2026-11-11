@@ -191,3 +191,34 @@ pas 19 ruptures radio. Il faudra distinguer l’état relayé et la connexion
 réelle ; cette observation n’explique pas à elle seule le défaut au boot.
 L’archive privée reste sous artifacts, non versionnée, sans publication des
 identifiants réseau ou matériels de l’utilisateur.
+
+
+## Complément des événements Lombard et instrumentation du démarrage
+
+Les événements fournis ensuite localisent l'échec : SystemStarter attend
+le service à 15:07:28 ; l'USB 12 Mb/s, le firmware, la calibration et
+l'interface réseau s'initialisent à 15:07:37–40. À 15:07:54, SystemStarter
+signale que le StartupItem n'a pas terminé avec succès. Le nombre 207 dans
+son message n'est pas un code de sortie établi. L'hypothèse d'une absence
+initiale d'énumération USB ne correspond donc pas à cette tentative.
+L'étape exacte suivante reste inconnue : compagnon, sonde native, service SC
+ou superviseur. Ne pas changer les délais ni l'ordre des appels sans mesure.
+
+Autre événement indépendant : à 15:42:05, watchdog RX=1, erreur e00002d6,
+lectures de registres eaea, puis récupération e00002d8. Ce timeout ne prouve
+pas la cause du défaut de démarrage, survenu plus tôt.
+
+La branche ajoute une instrumentation de boot uniquement : boot.log protégé
+root 0600 dans l'état 0700, étapes et résultat final, rotation au prochain
+boot uniquement, conservation lors de l'activation manuelle. Les erreurs de
+la sonde sont maintenant décrites comme erreurs de vérification driver/API,
+sans conclure abusivement à une radio défectueuse. Aucun changement du moteur
+Wi-Fi ou des délais. Complément local DWA121-P034-Boot-Diagnostic.tgz : deux
+scripts et installateur avec sauvegarde des originaux ; non inclus dans les
+archives preview1 publiées.
+
+Tests sous Panther en fixture isolée : échec USB simulé journalisé,
+résultat 1 conservé, verrou nettoyé, fichier root 0600 ; statut manuel sans
+rotation, tentative suivante conservant boot.previous.log ; installateur
+remplaçant seulement les deux scripts avec root 0755. Ces tests ne valident
+pas un démarrage matériel corrigé. Preuves dans boot-log-test sous artifacts.
