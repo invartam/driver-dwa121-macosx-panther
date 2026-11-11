@@ -124,3 +124,7 @@ jours, PowerBook USB 1.1. Les tests de publication d'identité console ne
 remplacent pas un logout réel. La republication révoque les anciens clients ;
 le même UID console demeure autorisé. Le renouvellement de clés n'est pas
 transparent : une nouvelle saisie native peut être nécessaire après rupture.
+
+Désinstallation livrée également réussie : fichiers du prototype et lanceurs
+Finder retirés, sauvegardes protégées conservées, préférences CFEqual, seule
+la stable 0.15.0 chargée (`installed-uninstall.log`).

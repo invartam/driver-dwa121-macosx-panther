@@ -1,7 +1,6 @@
 # DWA-121 AirPort P0.3.4 — Panther PPC Preview
 
-**Document de préparation : préversion non publiée et installateur non encore
-qualifié. Ne pas utiliser les artefacts de développement sur le PowerBook.**
+**Candidat validé en VM Panther le 11 novembre 2026 ; publication GitHub en attente.**
 La qualification physique du PowerBook G3 USB 1.1 reste à effectuer après
 validation et publication. Les essais VM EHCI ne la remplacent pas.
 
