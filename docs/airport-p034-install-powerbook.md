@@ -87,9 +87,14 @@ en conservant les sauvegardes protégées et la stable. Aucun accès Internet
 n'est nécessaire au retour arrière. Ne pas utiliser le désinstalleur de la
 stable pour retirer cette préversion.
 
-## Démarrage automatique facultatif
+## Démarrage automatique : défaut connu sur Lombard
 
-Après validation des premiers essais, `Activer-au-demarrage.command` installe
+**Preview1 : ne pas activer cette option sur le Lombard.** Un essai utilisateur
+a confirmé une carte AirPort non reconnue après redémarrage ; la
+désactivation/réactivation manuelle rétablit le Wi-Fi. Cause en cours de
+diagnostic. Conserver l’activation manuelle pour cette préversion.
+
+`Activer-au-demarrage.command` installe
 le StartupItem Panther. Le StartupItem stable est déplacé dans une sauvegarde
 protégée pour éviter deux propriétaires USB concurrents. Au démarrage, le
 prototype attend une saisie native du mot de passe après ouverture de session.

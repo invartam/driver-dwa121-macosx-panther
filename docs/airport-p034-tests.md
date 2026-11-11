@@ -144,3 +144,23 @@ installation → activation → détection AirPort → scan → connexion native
 trafic réseau est donc validé par ce retour d’usage matériel.
 Ce retour ne valide pas encore la désactivation, le retour arrière, le
 démarrage automatique ou l'endurance sur cette machine.
+
+
+## Échec du démarrage automatique sur Lombard — retour utilisateur du 11 novembre 2026
+
+Après `Activer-au-demarrage.command` puis redémarrage du PowerBook, la carte
+AirPort n’est pas reconnue. Une désactivation puis réactivation manuelles
+rétablissent la reconnaissance et la connexion Wi-Fi. Le démarrage automatique
+est donc **défaillant sur ce matériel dans preview1**, malgré le succès du
+parcours manuel. Le test VM précédent ne couvrait que l’ajout/retrait du
+StartupItem, pas son exécution pendant un redémarrage.
+
+Cause non établie. Le script teste la présence USB une seule fois avant de
+charger les extensions ; une énumération tardive est une hypothèse, pas une
+conclusion. Il faut distinguer absence USB, erreur de chargement/calibration,
+refus du script et défaut de publication de l’état AirPort à la session.
+Les journaux du démarrage raté sont nécessaires avant correction ciblée.
+
+La désactivation retire aussi l’option de démarrage automatique et restaure
+le StartupItem stable. En attendant le diagnostic, conserver l’activation
+manuelle et ne pas réactiver l’option automatique sur ce PowerBook.
