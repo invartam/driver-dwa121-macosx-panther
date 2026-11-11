@@ -120,7 +120,8 @@ Non exécutés sur ce candidat : logout/login graphique réel, reboot avec
 StartupItem expérimental activé, installation graphique volontairement sans
 clé (les préflights ne l'exigent pas), injection d'échec kext, restauration
 de fichiers d'une ancienne préversion empaquetée, endurance sur plusieurs
-jours, PowerBook USB 1.1. Les tests de publication d'identité console ne
+jours. Le PowerBook USB 1.1 n’avait pas été testé par l’agent ; le retour
+matériel utilisateur ultérieur est consigné ci-dessous. Les tests de publication d'identité console ne
 remplacent pas un logout réel. La republication révoque les anciens clients ;
 le même UID console demeure autorisé. Le renouvellement de clés n'est pas
 transparent : une nouvelle saisie native peut être nécessaire après rupture.
@@ -128,3 +129,18 @@ transparent : une nouvelle saisie native peut être nécessaire après rupture.
 Désinstallation livrée également réussie : fichiers du prototype et lanceurs
 Finder retirés, sauvegardes protégées conservées, préférences CFEqual, seule
 la stable 0.15.0 chargée (`installed-uninstall.log`).
+
+## Retour d'usage utilisateur après publication — 11 novembre 2026
+
+L'utilisateur confirme l'installation du PKG depuis le DMG, l'exécution de
+`Activer.command`, la reconnaissance de la carte AirPort, la visibilité de
+NAEBA, la connexion par l'invite native avec `<mot de passe>` et des tests
+réseau réussis. Il s'agit d'un retour d'usage, sans journaux instrumentés ni
+mesures détaillées de ping, débit ou volume transféré fournis.
+
+L’utilisateur confirme la machine et le transport : **PowerBook G3 Lombard,
+Mac OS X 10.3.9 Panther, DWA-121 sur le port USB 1.1 natif**. Le parcours
+installation → activation → détection AirPort → scan → connexion native →
+trafic réseau est donc validé par ce retour d’usage matériel.
+Ce retour ne valide pas encore la désactivation, le retour arrière, le
+démarrage automatique ou l'endurance sur cette machine.

@@ -32,7 +32,8 @@ pings. Détails et échecs initiaux conservés dans le rapport de tests.
 
 Limites : autres programmes du même UID console autorisés ; pas de test de
 logout graphique réel, reboot du StartupItem prototype, injection kext ou
-endurance prolongée. PowerBook G3 USB 1.1 non qualifié. RSSI indisponible,
+endurance prolongée. Qualification fonctionnelle initiale du PowerBook G3
+USB 1.1 rapportée par l’utilisateur ci-dessous. RSSI indisponible,
 scan refusé pendant WPA2, reprise/renouvellement non transparents.
 Le guide embarqué dans le PKG est la version de préparation : conserver les
 instructions externes à jour avec le paquet pour connaître la validation.
@@ -45,3 +46,14 @@ Statut GitHub vérifié : prerelease, non draft. Tag sur `a1e1057`.
 Toutes les pièces jointes ont été retéléchargées puis vérifiées avec
 SHA256SUMS (7 fichiers : succès). Le DMG et le TGZ sont identiques aux
 archives VM testées ; aucun binaire n'a changé lors de la publication.
+
+
+## Retour matériel après publication — 11 novembre 2026
+
+L’utilisateur confirme sur **PowerBook G3 Lombard, Panther 10.3.9 et port
+USB 1.1 natif avec la DWA-121** : installation du PKG depuis le DMG,
+Activer.command, reconnaissance AirPort, scan NAEBA, connexion par l’invite
+native avec chevrons et tests réseau réussis. C’est une validation d’usage
+rapportée, sans journaux ni mesures instrumentées fournis. L’endurance,
+le démarrage automatique et le retour arrière restent à vérifier sur ce
+PowerBook. Les archives publiées et leurs empreintes restent inchangées.

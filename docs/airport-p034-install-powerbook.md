@@ -1,8 +1,10 @@
 # DWA-121 AirPort P0.3.4 — Panther PPC Preview
 
 **Préversion expérimentale validée en VM Panther le 11 novembre 2026.**
-La qualification physique du PowerBook G3 USB 1.1 reste à effectuer après
-validation et publication. Les essais VM EHCI ne la remplacent pas.
+L’utilisateur confirme également le parcours d’installation, d’activation,
+de scan et de connexion native avec trafic réseau sur PowerBook G3 Lombard,
+Panther 10.3.9 et USB 1.1. Ce retour d’usage ne comporte pas de mesures
+instrumentées ; l’endurance et le retour arrière sur ce matériel restent à vérifier.
 
 ## Installation
 
