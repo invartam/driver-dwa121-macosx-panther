@@ -1,13 +1,12 @@
-# P0.3.4 — candidat validé localement
+# P0.3.4 — préversion expérimentale Panther PPC
 
-Aucune release GitHub publiée : `gh auth status` indique qu'aucun compte
-n'est authentifié. Commit des sources runtime : `d4dcaff` (identifiant complet
+Commit des sources runtime : `d4dcaff` (identifiant complet
 dans le manifeste). Branche `v1/airport-p034`. `main` et v0.15.0 préservés.
 
-Tag prévu : `airport-p034-preview1`.
+Tag : `airport-p034-preview1`.
 Titre : `DWA-121 AirPort P0.3.4 — Panther PPC Preview`.
 
-Livrables locaux dans `artifacts/airport-p034/release` : DMG et TGZ du bundle
+Pièces jointes : DMG et TGZ du bundle
 PKG historique construit par PackageMaker 10.3.9, SHA256SUMS, manifeste
 BINARY-PROVENANCE.json, INSTALL-RESTORE.md et TEST-REPORT.md.
 Le DMG est exactement celui installé et testé depuis Installer.app.
@@ -38,8 +37,11 @@ scan refusé pendant WPA2, reprise/renouvellement non transparents.
 Le guide embarqué dans le PKG est la version de préparation : conserver les
 instructions externes à jour avec le paquet pour connaître la validation.
 
-Après rétablissement de l'authentification GitHub, les commandes exactes sont
-préparées dans `artifacts/airport-p034/release/PUBLISH.sh`. Ce script vérifie
-les hashes, pousse seulement la branche et le tag de préversion, puis crée
-une prerelease. Il ne modifie ni main ni la release stable. Ne pas exécuter
-si le tag ou la release existe déjà ; ne pas les remplacer.
+
+Publication effectuée le 11 novembre 2026 :
+https://github.com/invartam/driver-dwa121-macosx-panther/releases/tag/airport-p034-preview1
+
+Statut GitHub vérifié : prerelease, non draft. Tag sur `a1e1057`.
+Toutes les pièces jointes ont été retéléchargées puis vérifiées avec
+SHA256SUMS (7 fichiers : succès). Le DMG et le TGZ sont identiques aux
+archives VM testées ; aucun binaire n'a changé lors de la publication.

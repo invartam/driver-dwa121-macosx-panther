@@ -1,17 +1,17 @@
 # DWA-121 AirPort P0.3.4 — Panther PPC Preview
 
-**Candidat validé en VM Panther le 11 novembre 2026 ; publication GitHub en attente.**
+**Préversion expérimentale validée en VM Panther le 11 novembre 2026.**
 La qualification physique du PowerBook G3 USB 1.1 reste à effectuer après
 validation et publication. Les essais VM EHCI ne la remplacent pas.
 
-## Installation prévue
+## Installation
 
 Mac OS X **10.3.9 PowerPC**, compte administrateur, DWA-121 **A1**
 (2001:3308), au moins 64 Mio libres. Conserver une copie de l'installation
 stable 0.15.0 et un accès local au Mac. Aucun Xcode, Python, Homebrew ou
 téléchargement complémentaire ne doit être nécessaire sur le PowerBook.
 
-Après publication seulement, télécharger depuis la préversion GitHub
+Télécharger depuis la préversion GitHub
 `airport-p034-preview1` le DMG, `SHA256SUMS` et les instructions. Sur un Mac
 récent, dans le dossier de téléchargement, vérifier :
 
