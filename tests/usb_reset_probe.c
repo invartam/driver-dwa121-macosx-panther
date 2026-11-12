@@ -1,5 +1,5 @@
 /* Panther-only hardware experiment. Never installed by the driver package.
- * Root, exactly one DWA-121 A1, no project driver attached. Standard device
+ * Root, exactly one DWA-121 A1, no project driver attached for reset. Standard device
  * descriptor reads and optional device-port reset, never controller reset. */
 #include <IOKit/IOKitLib.h>
 #include <IOKit/IOCFPlugIn.h>
@@ -8,6 +8,17 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <string.h>
+static io_service_t find_device(int *count)
+{
+    CFMutableDictionaryRef match=IOServiceMatching("IOUSBDevice");
+    int vid=0x2001,pid=0x3308;CFNumberRef v=CFNumberCreate(0,kCFNumberIntType,&vid),p=CFNumberCreate(0,kCFNumberIntType,&pid);
+    io_service_t service,device=0;io_iterator_t iterator=0;*count=0;
+    if(!match||!v||!p){if(match)CFRelease(match);if(v)CFRelease(v);if(p)CFRelease(p);return 0;}
+    CFDictionarySetValue(match,CFSTR("idVendor"),v);CFDictionarySetValue(match,CFSTR("idProduct"),p);CFRelease(v);CFRelease(p);
+    if(IOServiceGetMatchingServices(kIOMasterPortDefault,match,&iterator))return 0;
+    while((service=IOIteratorNext(iterator))){++*count;if(!device)device=service;else IOObjectRelease(service);}
+    IOObjectRelease(iterator);return device;
+}
 static int descriptor(IOUSBDeviceInterface182 **usb,const char *label)
 {
     IOUSBDevRequestTO r;unsigned char bytes[18];IOReturn result;
@@ -23,31 +34,31 @@ static int descriptor(IOUSBDeviceInterface182 **usb,const char *label)
 }
 int main(int argc,char **argv)
 {
-    io_service_t service,device=0;io_iterator_t iterator=0;
-    CFMutableDictionaryRef match;CFNumberRef v,p;int vid=0x2001,pid=0x3308,reset,count=0,ok=0;
+    io_service_t service,device=0;int reset,recover,count=0,ok=0,closeDevice=1;
     IOCFPlugInInterface **plugin=0;IOUSBDeviceInterface182 **usb=0;SInt32 score;IOReturn r;
-    if(argc!=2||(strcmp(argv[1],"--descriptor")&&strcmp(argv[1],"--reset"))||geteuid()!=0){
-        fputs("Root test only: usb-reset-probe --descriptor|--reset\n",stderr);return 1;}
-    reset=!strcmp(argv[1],"--reset");
+    if(argc!=2||(strcmp(argv[1],"--descriptor")&&strcmp(argv[1],"--reset")&&strcmp(argv[1],"--recover"))||geteuid()!=0){
+        fputs("Root test only: usb-reset-probe --descriptor|--reset|--recover\n",stderr);return 1;}
+    recover=!strcmp(argv[1],"--recover");reset=strcmp(argv[1],"--descriptor")!=0;
     service=IOServiceGetMatchingService(kIOMasterPortDefault,IOServiceMatching("DWA121Diagnostic"));
-    if(service){IOObjectRelease(service);fputs("Project driver attached; refusing USB experiment.\n",stderr);return 1;}
-    match=IOServiceMatching("IOUSBDevice");v=CFNumberCreate(0,kCFNumberIntType,&vid);p=CFNumberCreate(0,kCFNumberIntType,&pid);
-    if(!match||!v||!p)return 1;
-    CFDictionarySetValue(match,CFSTR("idVendor"),v);CFDictionarySetValue(match,CFSTR("idProduct"),p);CFRelease(v);CFRelease(p);
-    if(IOServiceGetMatchingServices(kIOMasterPortDefault,match,&iterator))return 1;
-    while((service=IOIteratorNext(iterator))){++count;if(!device)device=service;else IOObjectRelease(service);}
-    IOObjectRelease(iterator);
+    if(service){IOObjectRelease(service);if(reset){fputs("Project driver attached; refusing USB reset.\n",stderr);return 1;}}
+    device=find_device(&count);
     if(count!=1){if(device)IOObjectRelease(device);fprintf(stderr,"Expected one DWA-121, found %d\n",count);return 2;}
-    r=IOCreatePlugInInterfaceForService(device,kIOUSBDeviceUserClientTypeID,kIOCFPlugInInterfaceID,&plugin,&score);IOObjectRelease(device);
-    if(r||!plugin)return 1;
+    r=IOCreatePlugInInterfaceForService(device,kIOUSBDeviceUserClientTypeID,kIOCFPlugInInterfaceID,&plugin,&score);
+    if(r||!plugin){IOObjectRelease(device);return 1;}
     r=(*plugin)->QueryInterface(plugin,CFUUIDGetUUIDBytes(kIOUSBDeviceInterfaceID182),(LPVOID *)&usb);
-    (*plugin)->Release(plugin);if(r||!usb)return 1;
+    (*plugin)->Release(plugin);if(r||!usb){IOObjectRelease(device);return 1;}
     r=(*usb)->USBDeviceOpen(usb);printf("USBDeviceOpen=%08lx\n",(unsigned long)r);
     if(!r){
         ok=descriptor(usb,"before");
-        if(ok&&reset){r=(*usb)->ResetDevice(usb);printf("ResetDevice=%08lx (descriptor verification still required)\n",(unsigned long)r);fflush(stdout);
-            usleep(500000);ok=!r&&descriptor(usb,"after");}
-        (*usb)->USBDeviceClose(usb);
+        if(reset&&(ok||recover)){
+            if(!ok)puts("Explicit recovery: one device reset despite failed descriptor; kernel VID/PID match and normal open verified");
+            r=(*usb)->ResetDevice(usb);printf("ResetDevice=%08lx (descriptor verification still required)\n",(unsigned long)r);fflush(stdout);
+            usleep(500000);service=find_device(&count);
+            if(count!=1||!service||!IOObjectIsEqualTo(device,service)){
+                puts("Device disappeared or was replaced; abandoning old handle");ok=0;closeDevice=0;
+            }else ok=!r&&descriptor(usb,"after");
+            if(service)IOObjectRelease(service);}
+        if(closeDevice)(*usb)->USBDeviceClose(usb);
     }
-    (*usb)->Release(usb);return ok?0:1;
+    (*usb)->Release(usb);IOObjectRelease(device);return ok?0:1;
 }

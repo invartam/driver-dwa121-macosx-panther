@@ -85,3 +85,32 @@ des délais, avant et après ; un retour zéro de ResetDevice ne suffit pas.
 L'essai de reset effectif et son effet sur un reboot restent à exécuter après
 un nouveau rebranchement. Aucun correctif de production n'est déduit de la
 seule compilation de cet outil.
+
+## Résultat du reset ciblé — 12 novembre au soir
+
+Après rebranchement, GET_DESCRIPTOR réel vérifié avant chargement. Cœur seul
+chargé avec RX sain, puis déchargé normalement. Dès la mesure avant reset,
+USBDeviceOpen réussit mais GET_DESCRIPTOR expire (e0004051, zéro octet).
+L'échec des échanges de contrôle est donc observable avant tout reboot ;
+l'entrée IORegistry seule est insuffisante comme contrôle de santé.
+
+Le mode --reset initial a correctement abandonné sans reset ni reboot. Un
+mode explicite --recover a ensuite été ajouté, gardant une unique cible
+2001:3308, l'absence de pilote attaché, l'ouverture sans seize et un seul
+ResetDevice. Il vérifie aussi l'identité de l'objet après reset. Le mode
+--descriptor autorise désormais une mesure en lecture seule pendant RX,
+sans contourner une éventuelle exclusivité d'ouverture.
+
+Essai --recover : descripteur avant reset en timeout, ResetDevice retourne
+zéro, mais descripteur après reset en erreur e0004061, zéro octet. Aucun
+reboot n'est exécuté. Une nouvelle ouverture ne trouve ensuite plus la clé ;
+OHCI rapporte de nouveaux échecs d'adressage. **Le reset USB standard ne
+récupère donc pas la clé dans cet essai.** Il ne doit pas être intégré comme
+solution ni son code zéro présenté comme réussite.
+
+Compilation PPC native de l'outil modifié réussie, IOObjectIsEqualTo et ABI
+182 confirmés dans les en-têtes Panther. Le PowerBook reste accessible par
+Ethernet ; le prototype et son démarrage automatique restent désactivés.
+La prochaine mesure nécessite un rebranchement : descripteur avant
+chargement, pendant RX puis après déchargement, sans nouveau reset ni reboot.
+Cela distinguera initialisation/fonctionnement actif et transition d'arrêt.
