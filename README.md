@@ -1,5 +1,29 @@
 # D-Link DWA-121 A1 pour Mac OS X Panther
 
+A D-Link DWA-121 **A1 / RTL8188CU** USB Wi-Fi driver for **Mac OS X Panther 10.3.9 on PowerPC**, with WPA2-PSK / AES-CCMP. Only USB ID `2001:3308` is supported. The French installation and validation guides follow below.
+
+## Published versions
+
+- **Stable release channel — [v0.15.0](https://github.com/invartam/driver-dwa121-macosx-panther/releases/tag/v0.15.0):** experimental driver exposed as an Ethernet interface, with manual SSID/channel configuration. No native AirPort menu integration in this version.
+- **Experimental — [AirPort P0.3.4 preview1](https://github.com/invartam/driver-dwa121-macosx-panther/releases/tag/airport-p034-preview1):** separately published native AirPort prototype. **Automatic startup has a confirmed defect on PowerBook G3 Lombard; use manual activation and read the current release warnings.** This is not the stable driver. The release describes its native password-entry convention and remaining limitations.
+- Further development is not part of these published binaries. Sleep/resume, prolonged endurance and broader hardware support must not be assumed.
+
+PowerBook G3 / USB 1.1 usage is reported by the user; this does not establish performance benchmarks. See the [stable validation report](docs/driver-v0.15.md).
+
+## Licensing and contributions
+
+Read [LICENSE](LICENSE), the [Realtek notice](src/rtl8188cu/NOTICE), [firmware licence](firmware/LICENSE.Realtek) and [wpa_supplicant terms](vendor/wpa_supplicant-2.12/COPYING). Different components retain their own terms.
+
+For an issue, specify the hardware revision, OS version and exact release, and redact Wi-Fi credentials and network configuration. See [installation and diagnostics](docs/installation-driver.txt).
+
+## Related projects
+
+- [HomeBank Panther](https://github.com/invartam/homebank-panther): native personal finance on Mac OS X 10.3.9 PowerPC.
+- [HomeBank Web](https://github.com/invartam/homebank-web): a HomeBank XHB personal finance PWA. [Open the web application](https://blog.benjy.lu/homebank-web/).
+- [DWA-121 Panther driver](https://github.com/invartam/driver-dwa121-macosx-panther): USB Wi-Fi for a supported vintage Macintosh configuration.
+
+## Documentation française du pilote v0.15.0
+
 Pilote Wi-Fi expérimental **0.15.0** pour Mac OS X 10.3.9 PowerPC, DWA-121 **révision A1** (USB `2001:3308`, RTL8188CU). Il crée une interface réseau Ethernet `enN` et prend en charge WPA2-Personal/PSK avec AES-CCMP, DHCP et le trafic IP.
 
 ## Télécharger et installer
